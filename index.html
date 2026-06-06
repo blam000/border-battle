@@ -481,8 +481,8 @@ table.skn tr.skn-zero td{color:#5b6577;}
 <script>
 (function(){var s=document.getElementById("splash");if(!s)return;
 setTimeout(function(){s.classList.add("logo-in");},500);
-setTimeout(function(){s.classList.add("hide");},4500);
-setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},5200);})();
+setTimeout(function(){s.classList.add("hide");},5500);
+setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})();
 </script>
 
 <header class="board">
@@ -529,7 +529,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},5200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.07;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.09;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -766,8 +766,8 @@ function initSync(){
 /* ============================================================
    Team helpers
    ============================================================ */
-function teamName(t){ return (state.teamNames[t]||"").trim() || (t==="R"?"Red":"Blue"); }
-function teamLetter(t){ const l=(state.teamLetters[t]||"").trim().toUpperCase(); return l.charAt(0) || t; }
+function teamName(t){ return (state.teamNames[t]||"").trim() || (t==="R"?"West":"East"); }
+function teamLetter(t){ const l=(state.teamLetters[t]||"").trim().toUpperCase(); return l.charAt(0) || (t==="R"?"W":"E"); }
 function teamCount(t){ return Object.values(state.players).filter(p=>p.team===t).length; }
 
 /* The course a round actually plays: the tournament course when "same course
@@ -1159,13 +1159,13 @@ function renderSetup(){
   html += `<div class="card">
     <h3>Teams</h3>
     <div class="team-row-grid">
-      <input type="text" id="rName" value="${escapeHtml(state.teamNames.R)}" placeholder="Red">
-      <input type="text" id="rLetter" maxlength="1" value="${escapeHtml(state.teamLetters.R)}" placeholder="R" style="text-align:center;text-transform:uppercase">
+      <input type="text" id="rName" value="${escapeHtml(state.teamNames.R)}" placeholder="West">
+      <input type="text" id="rLetter" maxlength="1" value="${escapeHtml(state.teamLetters.R)}" placeholder="W" style="text-align:center;text-transform:uppercase">
       <label class="defchk"><input type="checkbox" id="defR" ${state.defending==="R"?"checked":""}><span>Defending champ</span></label>
     </div>
     <div class="team-row-grid">
-      <input type="text" id="bName" value="${escapeHtml(state.teamNames.B)}" placeholder="Blue">
-      <input type="text" id="bLetter" maxlength="1" value="${escapeHtml(state.teamLetters.B)}" placeholder="B" style="text-align:center;text-transform:uppercase">
+      <input type="text" id="bName" value="${escapeHtml(state.teamNames.B)}" placeholder="East">
+      <input type="text" id="bLetter" maxlength="1" value="${escapeHtml(state.teamLetters.B)}" placeholder="E" style="text-align:center;text-transform:uppercase">
       <label class="defchk"><input type="checkbox" id="defB" ${state.defending==="B"?"checked":""}><span>Defending champ</span></label>
     </div>
     <div class="sub" style="margin-top:8px">Blank name → “Red”/“Blue”; the single letter appears on the “Hole won” chips. Only one team can be defending champion — used by the 12–12 tie rule.</div>
