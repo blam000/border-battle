@@ -408,19 +408,17 @@ table.qp th,table.qp td{text-align:center;border-bottom:1px solid var(--line);}
 .eo-pn.r{color:var(--red);} .eo-pn.b{color:var(--blue);}
 .eo-pmeta{font-size:15px;color:var(--muted);font-family:var(--mono);margin-top:3px;}
 .eo-prow.active .eo-pn,.eo-prow.active .eo-pn.r,.eo-prow.active .eo-pn.b,.eo-prow.active .eo-pmeta{color:#fff;}
-.eo-circle{flex:0 0 auto;width:66px;height:66px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+.eo-circle{flex:0 0 auto;width:70px;height:70px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-weight:700;font-size:26px;background:var(--green);color:#fff;}
 .eo-circle.preview{color:rgba(255,255,255,.55);}
 .eo-prow.active .eo-circle{background:#fff;color:var(--green);}
 .eo-prow.active .eo-circle.preview{color:var(--green);}
-/* When 4+ players are on one entry screen, shrink rows so they all fit (no scroll). */
-.eo-list.compact .eo-prow{padding:6px 16px;}
-.eo-list.compact .eo-circle{width:50px;height:50px;font-size:20px;}
-.eo-list.compact .eo-pn{font-size:19px;}
-.eo-list.compact .eo-pmeta{font-size:13px;margin-top:1px;}
+/* When 4+ players are on one entry screen, tighten row padding so all rows fit (circles stay full size). */
+.eo-list.compact .eo-prow{padding:4px 16px;}
+.eo-list.compact .eo-pmeta{margin-top:0;}
 .eo-pad{flex:0 0 auto;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;padding:10px 12px;background:var(--panel);border-top:1px solid var(--line);}
 .eo-key{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;color:var(--ink);
-  height:64px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
+  height:60px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;}
 .eo-key .k-n{font-size:32px;font-weight:700;line-height:1;}
 .eo-key .k-l{font-size:13px;color:var(--muted);}
 .eo-key.par{background:var(--green);border-color:var(--green);color:#fff;}
@@ -534,7 +532,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.11;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.13;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1201,7 +1199,7 @@ function renderSetup(){
         <input type="number" step="0.01" min="0" id="skinsBuyIn" value="${(state.skins.buyIn/100).toFixed(2)}" style="width:110px"></div>
       </label>
     </div>` : ""}
-    <div class="sub" style="margin-top:8px">An individual net-skins game across every player in each round (separate from the team match). A hole is won only by the outright lowest net — ties win nothing. The pot is split evenly among all skins won. Adds a Giant Skins tab.</div>
+    <div class="sub" style="margin-top:8px">A net-skins game across each round, separate from the team match. A hole is won only by the outright lowest net — ties win nothing — and the pot is split evenly among all skins won. Individual players compete in Four-Ball, Aggregate, and Singles rounds; in the pairs formats (Alternate Shot and Scramble) each pair plays as a single entrant using their combined side handicap. Adds a Giant Skins tab.</div>
   </div>`;
 
   // Players
