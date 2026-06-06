@@ -529,7 +529,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.09;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.10;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -2450,44 +2450,63 @@ function giantStrokesOnHole(H, si){
 
 function giantSkins(round){
   const c=courseOf(round);
-  if(isSharedBall(round.fmt)) return {na:"This format records one ball per side, so there are no individual scores for skins."};
-  const ids=[];
-  round.matches.forEach(m=>{ (m.red||[]).concat(m.blue||[]).forEach(id=>{ if(id&&state.players[id]&&!ids.includes(id)) ids.push(id); }); });
-  if(!ids.length) return {na:"No players in this round yet."};
-  const scoreOf={}, ch={};
-  ids.forEach(id=>{
-    const m=round.matches.find(mm=>(mm.red||[]).includes(id)||(mm.blue||[]).includes(id));
-    scoreOf[id]=(m&&m.scores&&m.scores[id])?m.scores[id]:Array(18).fill(null);
-    ch[id]=courseHandicap(state.players[id], round);
-  });
   const buyIn=state.skins.buyIn||0;
-  const pot=ids.length*buyIn;
+  const shared=isSharedBall(round.fmt);
 
-  // Determine the outright winner of each hole (strictly lowest net; ties win nothing).
+  // distinct players in the round (everyone buys in → drives the pot)
+  const playerIds=[];
+  round.matches.forEach(m=>{ (m.red||[]).concat(m.blue||[]).forEach(id=>{ if(id&&state.players[id]&&!playerIds.includes(id)) playerIds.push(id); }); });
+  if(!playerIds.length) return {na:"No players in this round yet."};
+  const pot=playerIds.length*buyIn;
+
+  // entrants: individual players normally; one entry per pair/side for shared-ball formats
+  const entrants=[]; // {key,name,short,ch,scores}
+  if(shared){
+    round.matches.forEach(m=>{
+      [["R","red","sideR"],["B","blue","sideB"]].forEach(([t,side,ballKey])=>{
+        const ps=(m[side]||[]).filter(id=>id&&state.players[id]);
+        if(!ps.length) return;
+        const chs=ps.map(id=>courseHandicap(state.players[id], round));
+        const ch=ps.length>=2 ? sideHcpFor(round.fmt, chs[0], chs[1]) : chs[0];
+        const scores=(m.scores&&m.scores[ballKey])?m.scores[ballKey]:Array(18).fill(null);
+        const nm=sideFirstNames(m,t);
+        entrants.push({key:m.id+"|"+t, name:nm, short:nm, ch, scores});
+      });
+    });
+  } else {
+    playerIds.forEach(id=>{
+      const m=round.matches.find(mm=>(mm.red||[]).includes(id)||(mm.blue||[]).includes(id));
+      const scores=(m&&m.scores&&m.scores[id])?m.scores[id]:Array(18).fill(null);
+      const full=state.players[id].name||"?";
+      entrants.push({key:id, name:full, short:full.trim().split(/\s+/)[0], ch:courseHandicap(state.players[id], round), scores});
+    });
+  }
+  if(!entrants.length) return {na:"No players in this round yet."};
+
+  // Outright winner of each hole (strictly lowest net; ties win nothing).
+  const has=(e,h)=>{ const v=e.scores[h]; return v!==null&&v!==undefined&&v!==""; };
   const holes=[]; const skinOrder=[]; let decidedCount=0;
   for(let h=0;h<18;h++){
-    const has = id=>{ const v=scoreOf[id][h]; return v!==null&&v!==undefined&&v!==""; };
-    // Every player in the round must have a score on this hole before a skin is awarded.
-    if(!ids.every(has)){ holes.push({h, decided:false}); continue; }
-    const scored=ids;
+    // Every entrant must have a score on this hole before a skin is awarded.
+    if(!entrants.every(e=>has(e,h))){ holes.push({h, decided:false}); continue; }
     decidedCount++;
     let best=Infinity; const net={};
-    scored.forEach(id=>{ net[id]=Number(scoreOf[id][h]) - giantStrokesOnHole(ch[id], c.holes[h].si); if(net[id]<best) best=net[id]; });
-    const low=scored.filter(id=>net[id]===best);
-    if(low.length===1){ holes.push({h, decided:true, won:true, winner:low[0], net:best}); skinOrder.push(low[0]); }
+    entrants.forEach(e=>{ const n=Number(e.scores[h]) - giantStrokesOnHole(e.ch, c.holes[h].si); net[e.key]=n; if(n<best) best=n; });
+    const low=entrants.filter(e=>net[e.key]===best);
+    if(low.length===1){ holes.push({h, decided:true, won:true, winner:low[0].key, wname:low[0].short, net:best}); skinOrder.push(low[0].key); }
     else { holes.push({h, decided:true, won:false, net:best, tied:low.length}); }
   }
 
-  // Pot is divided by the number of skins actually won; remainder cents to the first skins.
+  // Pot divided by skins actually won; remainder cents to the first skins.
   const totalSkins=skinOrder.length;
   const base = totalSkins ? Math.floor(pot/totalSkins) : 0;
   const rem  = totalSkins ? pot%totalSkins : 0;
-  const win={}, skins={}; ids.forEach(id=>{ win[id]=0; skins[id]=0; });
+  const win={}, skins={}; entrants.forEach(e=>{ win[e.key]=0; skins[e.key]=0; });
   let awarded=0;
-  skinOrder.forEach((id,idx)=>{ const v=base+(idx<rem?1:0); win[id]+=v; skins[id]++; awarded+=v; });
+  skinOrder.forEach((k,idx)=>{ const v=base+(idx<rem?1:0); win[k]+=v; skins[k]++; awarded+=v; });
   const skinValue = totalSkins ? pot/totalSkins : 0;
 
-  return {c, ids, ch, win, skins, pot, holes, totalSkins, skinValue, awarded, decidedCount, buyIn};
+  return {c, entrants, win, skins, pot, holes, totalSkins, skinValue, awarded, decidedCount, buyIn, playerCount:playerIds.length, shared};
 }
 
 function renderSkins(){
@@ -2508,16 +2527,15 @@ function renderSkins(){
     if(res.na){ html+=`<div class="sub" style="margin-top:10px">${escapeHtml(res.na)}</div></div>`; return; }
     const c=res.c;
     const valTxt = res.totalSkins ? `<span class="money">${fmtMoney(Math.round(res.skinValue))}</span>/skin` : "skin value TBD";
-    html+=`<div class="sub" style="margin-top:10px">${escapeHtml(c.courseName)}${c.tees?` · ${escapeHtml(c.tees)}`:""} · ${res.ids.length} players · pot <span class="money">${fmtMoney(res.pot)}</span> · ${res.totalSkins} skin${res.totalSkins===1?"":"s"} won · ${valTxt}</div>`;
+    html+=`<div class="sub" style="margin-top:10px">${escapeHtml(c.courseName)}${c.tees?` · ${escapeHtml(c.tees)}`:""} · ${res.playerCount} player${res.playerCount===1?"":"s"}${res.shared?` · ${res.entrants.length} pairs`:""} · pot <span class="money">${fmtMoney(res.pot)}</span> · ${res.totalSkins} skin${res.totalSkins===1?"":"s"} won · ${valTxt}</div>`;
 
     // leaderboard sorted by winnings
-    const rows=res.ids.map(id=>({id, ch:res.ch[id], sk:res.skins[id], won:res.win[id]}))
+    const rows=res.entrants.map(e=>({name:e.name, ch:e.ch, sk:res.skins[e.key], won:res.win[e.key]}))
       .sort((a,b)=> b.won-a.won || b.sk-a.sk);
     html+=`<div class="sc-scroll" style="margin-bottom:10px"><table class="skn"><thead><tr>
-      <th style="text-align:left">Player</th><th>CH</th><th>Skins</th><th>Won</th></tr></thead><tbody>`;
+      <th style="text-align:left">${res.shared?"Pair":"Player"}</th><th>CH</th><th>Skins</th><th>Won</th></tr></thead><tbody>`;
     rows.forEach(row=>{
-      const p=state.players[row.id];
-      html+=`<tr class="${row.sk>0?"":"skn-zero"}"><td style="text-align:left">${escapeHtml(p.name)}</td>
+      html+=`<tr class="${row.sk>0?"":"skn-zero"}"><td style="text-align:left">${escapeHtml(row.name)}</td>
         <td>${state.useHcp?row.ch:0}</td>
         <td>${row.sk>0?`<span class="skn-ct">${row.sk}</span>`:"-"}</td>
         <td>${row.won>0?`<span class="money">${fmtMoney(row.won)}</span>`:"-"}</td></tr>`;
@@ -2530,13 +2548,13 @@ function renderSkins(){
       html+=`<div class="skn-holes">`;
       decided.forEach(hr=>{
         if(hr.won){
-          const nm=state.players[hr.winner].name.split(" ")[0];
+          const nm=hr.wname;
           html+=`<div class="skn-hrow"><span class="skn-h">H${hr.h+1}</span>
             <span class="skn-w">${escapeHtml(nm)} <span class="skn-net">(net ${hr.net})</span></span>
             <span class="skn-pay">1 skin</span></div>`;
         } else {
           html+=`<div class="skn-hrow tied"><span class="skn-h">H${hr.h+1}</span>
-            <span class="skn-w">Tied <span class="skn-net">(net ${hr.net} · ${hr.tied} players)</span></span>
+            <span class="skn-w">Tied <span class="skn-net">(net ${hr.net} · ${hr.tied} ${res.shared?"pairs":"players"})</span></span>
             <span class="skn-pay">no skin</span></div>`;
         }
       });
