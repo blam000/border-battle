@@ -475,6 +475,26 @@ table.skn tr.skn-zero td{color:#5b6577;}
 #splashLoad .loadtxt{color:#fff;font-family:var(--body);font-size:13px;letter-spacing:.08em;opacity:.9;}
 @keyframes splashspin{to{transform:rotate(360deg);}}
 
+/* course lookup modal */
+.cl-ov{position:fixed;inset:0;z-index:120;background:rgba(6,8,12,.72);display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow:auto;}
+.cl-box{background:var(--panel);border:1px solid var(--line);border-radius:16px;max-width:420px;width:100%;padding:18px 16px 16px;box-shadow:0 18px 50px rgba(0,0,0,.5);margin:20px 0;}
+.cl-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.cl-title{font-family:var(--display);font-size:20px;color:var(--gold);letter-spacing:.03em;}
+.cl-x{background:none;border:none;color:var(--muted);font-size:24px;line-height:1;padding:0 4px;cursor:pointer;}
+.cl-x:hover{color:var(--ink);}
+.cl-row{display:flex;gap:8px;margin-bottom:10px;}
+.cl-row input{flex:1;}
+.cl-box input[type=text],.cl-box input[type=search]{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 10px;color:var(--ink);font-size:14px;font-family:var(--body);width:100%;}
+.cl-list{display:flex;flex-direction:column;gap:6px;max-height:46vh;overflow:auto;margin-top:2px;}
+.cl-item{text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:9px 11px;cursor:pointer;color:var(--ink);font-size:14px;font-weight:600;transition:.12s;}
+.cl-item:hover{border-color:var(--gold);}
+.cl-item .cl-sub{display:block;font-size:11.5px;color:var(--muted);margin-top:3px;font-weight:400;font-family:var(--mono);}
+.cl-msg{font-size:12.5px;color:var(--muted);padding:5px 2px;line-height:1.45;}
+.cl-msg.err{color:#ff8d97;}
+.cl-msg.head{color:var(--ink);font-weight:700;font-size:14px;}
+.cl-back{font-size:12px;color:var(--gold);background:none;border:none;cursor:pointer;padding:2px 0;margin-bottom:8px;font-weight:600;}
+.cl-note{font-size:11.5px;color:var(--faint);margin-top:12px;line-height:1.45;}
+.cl-note a{color:var(--muted);}
 </style>
 </head>
 <body>
@@ -590,6 +610,7 @@ let finalizePrompted = new Set(); // unit keys that have shown the first finish 
 let finalizeDeclined = new Set(); // unit keys where the user chose "No" (re-nag on return)
 let endedAnnounced = new Set();   // match ids whose "match finished" result has been shown
 let entry = null;             // active one-touch entry overlay state
+let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
 let selOpen = false;          // round/match selector expanded on the Play tab
 let skinsOpen = {};           // roundId -> open? (default open) on the Giant Skins tab
@@ -1314,7 +1335,8 @@ function courseEditorHtml(c, scope){
     <label class="fld">Course rating<input type="number" step="0.1" data-cf="cr" data-scope="${scope}" value="${c.cr}"></label>
     <label class="fld">Slope<input type="number" data-cf="slope" data-scope="${scope}" value="${c.slope}"></label>
     <label class="fld">Par<input type="number" data-cf="par" data-scope="${scope}" value="${c.par}"></label>
-  </div>`;
+  </div>
+  <button class="btn ghost sm" data-courselookup="${scope}" style="margin-bottom:10px">🔎 Look up rating &amp; slope</button>`;
   if(state.useHcp){
     html += `<button class="collapse-btn" data-toggleholes="${scope}">${showHoles?"▾ Hide":"▸ Edit"} hole pars &amp; stroke index</button>`;
     if(showHoles) html += holesEditor(c, scope);
@@ -1349,6 +1371,187 @@ function validStrokeIndex(c){
 
 /* Resolve a course-editor scope to the object being edited. */
 function scopeCourse(scope){ return scope==="master" ? state.course : state.rounds.find(r=>r.id===scope); }
+
+/* ============================================================
+   Course lookup  (GolfCourseAPI — https://golfcourseapi.com)
+   Fills CR / Slope / Par and, when available, per-hole par &
+   stroke index from a chosen tee. Writes through scopeCourse()
+   + saveState() + renderSetup() exactly like the manual editor,
+   so no scoring logic changes. The API key lives in localStorage
+   only (never in state, never synced, never exported).
+   ============================================================ */
+const GCA_BASE = "https://api.golfcourseapi.com/v1";
+const GCA_KEY_STORE = "cc_gca_key";
+function gcaKey(){ try{ return localStorage.getItem(GCA_KEY_STORE)||""; }catch(e){ return ""; } }
+function setGcaKey(k){ try{ k?localStorage.setItem(GCA_KEY_STORE,k):localStorage.removeItem(GCA_KEY_STORE); }catch(e){} }
+
+async function gcaFetch(path){
+  const res = await fetch(GCA_BASE+path, { headers:{ "Authorization":"Key "+gcaKey() } });
+  if(res.status===401 || res.status===403) throw new Error("auth");
+  if(!res.ok) throw new Error("http"+res.status);
+  return res.json();
+}
+function gcaLocLine(c){
+  const l=(c&&c.location)||{};
+  return [l.city,l.state,l.country].filter(Boolean).join(", ");
+}
+// Normalize one GolfCourseAPI tee into the app's shape. Per-hole `handicap`
+// is the stroke index; `par_total` is course par (fallback: sum of hole pars).
+function gcaNormalizeTee(t, gender){
+  const raw = Array.isArray(t.holes) ? t.holes : [];
+  let holes = null;
+  if(raw.length===18) holes = raw.map(h=>({ par:Number(h.par)||0, si:Number(h.handicap)||0 }));
+  let par = Number(t.par_total);
+  if(!isFinite(par) && holes) par = holes.reduce((s,h)=>s+h.par,0);
+  return { name:(t.tee_name||"Tee"), gender, cr:Number(t.course_rating), slope:Number(t.slope_rating), par:isFinite(par)?par:null, holes };
+}
+function gcaTeesOf(course){
+  const out=[], tt=(course&&course.tees)||{};
+  (tt.male||[]).forEach(t=>out.push(gcaNormalizeTee(t,"M")));
+  (tt.female||[]).forEach(t=>out.push(gcaNormalizeTee(t,"F")));
+  return out;
+}
+// Write a chosen tee into the scoped course (reusing the manual edit path).
+function applyLookupTee(scope, course, tee){
+  const c=scopeCourse(scope); if(!c) return;
+  const club=course.club_name, name=course.course_name;
+  c.courseName = (club&&name&&club!==name) ? (club+" — "+name) : (name||club||c.courseName);
+  c.tees = tee.gender ? (tee.name+" ("+tee.gender+")") : tee.name;
+  if(isFinite(tee.cr)    && tee.cr>50    && tee.cr<90)     c.cr=tee.cr;
+  if(isFinite(tee.slope) && tee.slope>=55&& tee.slope<=155) c.slope=tee.slope;
+  if(tee.par!=null && isFinite(tee.par) && tee.par>=27 && tee.par<=80) c.par=tee.par;
+  if(tee.holes && tee.holes.length===18){
+    const seen=new Set(); let siOK=true;
+    for(const h of tee.holes){ const si=h.si; if(si<1||si>18||seen.has(si)){ siOK=false; break; } seen.add(si); }
+    siOK = siOK && seen.size===18;
+    c.holes = tee.holes.map((h,i)=>({
+      par: (h.par>=3 && h.par<=6) ? h.par : (c.holes[i]?c.holes[i].par:4),
+      si:  siOK ? h.si : (c.holes[i]?c.holes[i].si:(i+1))
+    }));
+  }
+  saveState();
+  if(state.sameCourseAll) renderHeader();
+  renderSetup();
+}
+
+function openCourseLookup(scope){
+  courseLookup = { scope, view: gcaKey()?"search":"key", query:"", results:[], course:null, tees:[], msg:"", err:false, busy:false };
+  renderCourseLookup();
+}
+function closeCourseLookup(){
+  courseLookup=null;
+  const o=document.getElementById("clOverlay"); if(o) o.remove();
+}
+async function doCourseSearch(){
+  const L=courseLookup; if(!L) return;
+  const q=(L.query||"").trim();
+  if(!q){ L.view="search"; L.err=true; L.msg="Type a course or club name."; renderCourseLookup(); return; }
+  L.busy=true; L.err=false; L.msg="Searching…"; L.view="search"; renderCourseLookup();
+  try{
+    const data=await gcaFetch("/search?search_query="+encodeURIComponent(q));
+    L.results=Array.isArray(data.courses)?data.courses:[];
+    L.busy=false; L.view="results"; L.msg=""; L.err=false;
+    renderCourseLookup();
+  }catch(err){
+    L.busy=false; L.err=true;
+    if(err.message==="auth"){ L.view="key"; L.msg="That key was rejected — check it and save again."; }
+    else { L.view="search"; L.msg="Couldn't reach GolfCourseAPI. Check your connection, or enter the course manually."; }
+    renderCourseLookup();
+  }
+}
+async function pickCourse(idx){
+  const L=courseLookup; if(!L) return;
+  const hit=L.results[idx]; if(!hit) return;
+  let course=hit, tees=gcaTeesOf(hit);
+  if(!tees.length && hit.id!=null){
+    L.busy=true; L.msg="Loading tees…"; renderCourseLookup();
+    try{
+      const data=await gcaFetch("/courses/"+encodeURIComponent(hit.id));
+      course=data.course||data;
+      tees=gcaTeesOf(course);
+    }catch(err){
+      L.busy=false; L.err=true;
+      L.msg = err.message==="auth" ? "Key rejected — re-enter it via Course lookup." : "Couldn't load that course. Try another.";
+      renderCourseLookup(); return;
+    }
+  }
+  course.club_name   = course.club_name   || hit.club_name;
+  course.course_name = course.course_name || hit.course_name;
+  L.busy=false; L.err=false; L.msg=""; L.course=course; L.tees=tees; L.view="tees";
+  renderCourseLookup();
+}
+function renderCourseLookup(){
+  if(!courseLookup) return;
+  let o=document.getElementById("clOverlay");
+  if(!o){ o=document.createElement("div"); o.id="clOverlay"; o.className="cl-ov"; document.body.appendChild(o); }
+  const L=courseLookup;
+  let body="";
+
+  if(L.view==="key"){
+    body = `
+      <div class="cl-msg">Enter your free GolfCourseAPI key to look up courses. Get one at <a href="https://golfcourseapi.com" target="_blank" rel="noopener">golfcourseapi.com</a>. It's stored only on this device.</div>
+      ${L.msg?`<div class="cl-msg ${L.err?"err":""}">${escapeHtml(L.msg)}</div>`:""}
+      <div class="cl-row"><input type="text" id="clKey" placeholder="API key" value="${escapeHtml(gcaKey())}" autocomplete="off" spellcheck="false"></div>
+      <div class="fin-btns"><button class="btn" id="clKeyCancel">Cancel</button><button class="btn gold" id="clKeySave">Save key</button></div>`;
+  } else if(L.view==="search" || L.view==="results"){
+    let list="";
+    if(L.view==="results"){
+      list = L.results.length
+        ? L.results.map((c,i)=>`<button class="cl-item" data-pick-course="${i}">${escapeHtml(c.course_name||c.club_name||"Course")}<span class="cl-sub">${escapeHtml(gcaLocLine(c)||"—")}</span></button>`).join("")
+        : `<div class="cl-msg">No matches. Try a different name.</div>`;
+    }
+    body = `
+      <div class="cl-row">
+        <input type="search" id="clQuery" placeholder="Search course or club name" value="${escapeHtml(L.query)}">
+        <button class="btn gold" id="clSearch" ${L.busy?"disabled":""}>${L.busy?"…":"Search"}</button>
+      </div>
+      ${L.msg?`<div class="cl-msg ${L.err?"err":""}">${escapeHtml(L.msg)}</div>`:""}
+      <div class="cl-list">${list}</div>
+      <div class="cl-note">Data from GolfCourseAPI. Need to change your key? Close and tap “Look up” after clearing it via the browser, or just re-open this dialog.</div>`;
+  } else if(L.view==="tees"){
+    const c=L.course;
+    const list = L.tees.length
+      ? L.tees.map((t,i)=>`<button class="cl-item" data-pick-tee="${i}">${escapeHtml(t.name)}${t.gender?` · ${t.gender}`:""}<span class="cl-sub">CR ${isFinite(t.cr)?t.cr:"—"} · Slope ${isFinite(t.slope)?t.slope:"—"} · Par ${t.par!=null?t.par:"—"}${t.holes?"":" · no hole data"}</span></button>`).join("")
+      : `<div class="cl-msg">No tee data published for this course.</div>`;
+    body = `
+      <button class="cl-back" id="clBack">‹ Back to results</button>
+      <div class="cl-msg head">${escapeHtml(c.course_name||c.club_name||"Course")}</div>
+      <div class="cl-list">${list}</div>
+      <div class="cl-note">Picking a tee fills course rating, slope and par, plus per-hole par &amp; stroke index when published. Stroke index is only overwritten if a complete 1–18 set is supplied. Verify before scoring.</div>`;
+  }
+
+  o.innerHTML = `<div class="cl-box">
+    <div class="cl-head"><div class="cl-title">Course lookup</div><button class="cl-x" id="clClose" aria-label="Close">×</button></div>
+    ${body}
+  </div>`;
+
+  o.querySelector("#clClose").addEventListener("click", closeCourseLookup);
+  o.addEventListener("click", e=>{ if(e.target===o) closeCourseLookup(); });
+
+  if(L.view==="key"){
+    o.querySelector("#clKeyCancel").addEventListener("click", closeCourseLookup);
+    o.querySelector("#clKeySave").addEventListener("click", ()=>{
+      setGcaKey(o.querySelector("#clKey").value.trim());
+      L.view="search"; L.msg=""; L.err=false; renderCourseLookup();
+      const q=document.getElementById("clQuery"); if(q) q.focus();
+    });
+  }
+  if(L.view==="search" || L.view==="results"){
+    const q=o.querySelector("#clQuery");
+    q.addEventListener("input", e=>{ L.query=e.target.value; });
+    q.addEventListener("keydown", e=>{ if(e.key==="Enter"){ e.preventDefault(); doCourseSearch(); } });
+    o.querySelector("#clSearch").addEventListener("click", doCourseSearch);
+    o.querySelectorAll("[data-pick-course]").forEach(b=>b.addEventListener("click",()=>pickCourse(Number(b.dataset.pickCourse))));
+    if(!L.busy) q.focus();
+  }
+  if(L.view==="tees"){
+    o.querySelector("#clBack").addEventListener("click", ()=>{ L.view="results"; L.msg=""; L.err=false; renderCourseLookup(); });
+    o.querySelectorAll("[data-pick-tee]").forEach(b=>b.addEventListener("click",()=>{
+      applyLookupTee(L.scope, L.course, L.tees[Number(b.dataset.pickTee)]);
+      closeCourseLookup();
+    }));
+  }
+}
 
 function playerOptions(team, selected, round){
   const used=new Set();
@@ -1512,6 +1715,11 @@ function bindSetup(){
     saveState();
   }));
   view.querySelectorAll("[data-cf]").forEach(inp=>inp.addEventListener("blur",()=>{ if(state.sameCourseAll) renderHeader(); }));
+
+  // course lookup (GolfCourseAPI)
+  view.querySelectorAll("[data-courselookup]").forEach(b=>b.addEventListener("click",e=>{
+    openCourseLookup(e.currentTarget.dataset.courselookup);
+  }));
 
   // holes toggle & edits
   view.querySelectorAll("[data-toggleholes]").forEach(b=>b.addEventListener("click",e=>{
