@@ -54,7 +54,7 @@ header.board{
 .team-panel.B{background:linear-gradient(135deg, rgba(22,54,127,.35), rgba(20,25,35,.6));}
 .team-panel .tn{font-weight:800;font-size:13px;letter-spacing:.02em;text-transform:uppercase;}
 .team-panel.R .tn{color:#ff8d97;} .team-panel.B .tn{color:#8fb4ff;}
-.team-panel .pts{font-family:var(--display);font-size:clamp(34px,10vw,52px);line-height:.9;}
+.team-panel .pts{font-family:var(--display);font-size:clamp(34px,10vw,52px);line-height:.9;margin:6px 0;}
 .team-panel .proj{font-family:var(--mono);font-size:11px;color:var(--muted);}
 .center-col{text-align:center;min-width:74px;}
 .center-col .towin{font-family:var(--display);font-size:22px;color:var(--gold);line-height:.95;}
@@ -476,10 +476,11 @@ table.skn tr.skn-zero td{color:#5b6577;}
 .tcard .tc-vs .r{color:var(--red);font-weight:700;} .tcard .tc-vs .b{color:var(--blue);font-weight:700;}
 .tcard .tc-vs .vs{color:var(--faint);margin:0 .4em;}
 .tcard .tc-score{font-family:var(--mono);color:var(--ink);}
-.tpill{font-size:11px;font-weight:700;letter-spacing:.04em;padding:4px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;}
-.tpill.muted{color:var(--muted);}
-.tpill.live{color:var(--gold);border-color:var(--gold);}
-.tpill.win{color:var(--bg);background:var(--gold);border-color:var(--gold);}
+.tpill{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:6px 12px;border-radius:999px;border:1px solid transparent;white-space:nowrap;}
+.tpill.muted{color:#cdd5e1;background:#2a3342;}
+.tpill.ready{color:#fff;background:var(--blue);box-shadow:0 0 0 1px var(--blue), 0 2px 10px rgba(37,99,235,.45);}
+.tpill.live{color:var(--bg);background:var(--gold);box-shadow:0 0 0 1px var(--gold), 0 2px 12px rgba(232,196,104,.55);}
+.tpill.win{color:var(--bg);background:linear-gradient(135deg,#f6d98a,#e8c468);box-shadow:0 0 0 1px var(--gold), 0 2px 14px rgba(232,196,104,.7);}
 .tcard .tc-acts{display:flex;flex-direction:column;gap:6px;}
 .tc-empty{color:var(--muted);text-align:center;padding:40px 10px;border:1px dashed var(--line);border-radius:14px;}
 .backHome{margin:14px 0 4px;}
@@ -577,6 +578,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
     <button data-tab="leaderboard">Leaderboard</button>
     <button data-tab="skins" id="skinsTab" class="hide">Giant Skins</button>
     <button data-tab="setup">Setup</button>
+    <button data-tab="data">Data</button>
     <button data-tab="ledger">Ledger</button>
     <button data-tab="detail">Detail</button>
   </nav>
@@ -590,7 +592,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.19;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.20;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -676,7 +678,7 @@ function blankState(){
     name:"Border Battle",
     teamNames:{R:"",B:""},
     teamLetters:{R:"",B:""},
-    useHcp:true,
+    useHcp:false,
     defending:null,
     addTeam:"R",
     seq:0,
@@ -750,7 +752,7 @@ function tournamentInfo(){
     status = state.defending ? teamName(state.defending)+" retain 🏆" : "Tied · playoff"; cls="win";
   }
   else if(dec>0){ status="In progress"; cls="live"; }
-  else { status="Ready"; cls="muted"; }
+  else { status="Ready"; cls="ready"; }
   return {
     status, cls, R:tot.R, B:tot.B, total,
     rName:teamName("R"), bName:teamName("B"),
@@ -799,10 +801,6 @@ function renderHome(){
         </div>
       </div>
       <span class="tpill ${info.cls}">${escapeHtml(info.status)}</span>
-      <div class="tc-acts">
-        <button class="btn sm" data-rename="${escapeHtml(t.id)}">Rename</button>
-        <button class="btn sm danger" data-del="${escapeHtml(t.id)}">Delete</button>
-      </div>
     </div>`;
   }).join("");
 
@@ -878,7 +876,7 @@ function deleteTournament(id){
     else { state = blankState(); }
     saveState();
   }
-  renderHome();
+  showHome();
   toast("Deleted");
 }
 
@@ -1403,6 +1401,7 @@ function render(){
   else if(activeTab==="leaderboard") renderLeaderboard();
   else if(activeTab==="skins") renderSkins();
   else if(activeTab==="setup") renderSetup();
+  else if(activeTab==="data") renderData();
   else renderLedger();
 }
 
@@ -1522,6 +1521,22 @@ function renderSetup(){
   activeRounds().forEach((r,i)=>{ html += roundSetupBlock(r, i===0); });
   html += `</div>`;
 
+  // Delete this tournament (Setup bottom)
+  html += `<div class="card">
+    <h3>Delete Tournament</h3>
+    <div class="sub">Permanently remove this tournament — its players, scores and pairings — from this device.</div>
+    <div class="flex-end">
+      <button class="btn danger" id="deleteTournamentBtn">Delete this tournament</button>
+    </div>
+  </div>`;
+
+  view.innerHTML=html;
+  bindSetup();
+}
+
+function renderData(){
+  let html = "";
+
   // Save & sync
   html += `<div class="card">
     <h3>Save &amp; Sync</h3>
@@ -1556,7 +1571,34 @@ function renderSetup(){
   </div>`;
 
   view.innerHTML=html;
-  bindSetup();
+  bindData();
+}
+
+function bindData(){
+  // Save & sync
+  $("exportBtn").addEventListener("click",exportJSON);
+  $("importBtn").addEventListener("click",()=>$("importFile").click());
+  $("importFile").addEventListener("change",importJSON);
+  $("resetBtn").addEventListener("click",()=>{
+    if(confirm("Reset this tournament? This clears its players, scores and pairings.")){
+      const keepId=state.id, keepName=state.name;
+      state=blankState(); state.id=keepId; state.name=keepName;
+      saveState(); render(); toast("Reset complete");
+    }
+  });
+
+  // Live sync
+  const sConnect=$("syncConnect");
+  if(sConnect) sConnect.addEventListener("click",()=>{
+    const cfg=parseFbConfig(($("syncCfg")||{}).value);
+    const room=(($("syncRoom")||{}).value||"").trim();
+    if(!cfg){ setSyncStatus("Couldn't read that config — paste the whole { … } object.","err"); return; }
+    if(!room){ setSyncStatus("Enter a room code.","err"); return; }
+    if(connectSync(cfg, room)) toast("Connecting to room");
+    renderData();
+  });
+  const sDisc=$("syncDisconnect");
+  if(sDisc) sDisc.addEventListener("click",()=>{ disconnectSync(); toast("Disconnected"); renderData(); });
 }
 
 function roundSetupBlock(r, isFirst){
@@ -1916,6 +1958,11 @@ function bindSetup(){
       if(idn==="bName")state.teamNames.B=v;
       if(idn==="rLetter")state.teamLetters.R=v.toUpperCase();
       if(idn==="bLetter")state.teamLetters.B=v.toUpperCase();
+      // Live-update the Red/Blue buttons beside the "Add player" field.
+      const seg=$("addTeamSeg");
+      if(seg && (idn==="rName"||idn==="bName")){
+        seg.querySelectorAll("button").forEach(b=>{ b.textContent = teamName(b.dataset.team); });
+      }
       saveState();renderHeader();
     });
   });
@@ -2021,29 +2068,9 @@ function bindSetup(){
     saveState(); renderSetup(); renderHeader();
   }));
 
-  // save & sync
-  $("exportBtn").addEventListener("click",exportJSON);  $("importBtn").addEventListener("click",()=>$("importFile").click());
-  $("importFile").addEventListener("change",importJSON);
-  $("resetBtn").addEventListener("click",()=>{
-    if(confirm("Reset this tournament? This clears its players, scores and pairings.")){
-      const keepId=state.id, keepName=state.name;
-      state=blankState(); state.id=keepId; state.name=keepName;
-      saveState(); render(); toast("Reset complete");
-    }
-  });
-
-  // live sync
-  const sConnect=$("syncConnect");
-  if(sConnect) sConnect.addEventListener("click",()=>{
-    const cfg=parseFbConfig(($("syncCfg")||{}).value);
-    const room=(($("syncRoom")||{}).value||"").trim();
-    if(!cfg){ setSyncStatus("Couldn't read that config — paste the whole { … } object.","err"); return; }
-    if(!room){ setSyncStatus("Enter a room code.","err"); return; }
-    if(connectSync(cfg, room)) toast("Connecting to room");
-    renderSetup();
-  });
-  const sDisc=$("syncDisconnect");
-  if(sDisc) sDisc.addEventListener("click",()=>{ disconnectSync(); toast("Disconnected"); renderSetup(); });
+  // Delete this tournament (bottom of Setup)
+  const dtb=$("deleteTournamentBtn");
+  if(dtb) dtb.addEventListener("click",()=>deleteTournament(state.id));
 }
 
 function bindInput(el,evt,fn){ if(el) el.addEventListener(evt,fn); }
