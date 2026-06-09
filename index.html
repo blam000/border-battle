@@ -483,6 +483,9 @@ table.skn tr.skn-zero td{color:#5b6577;}
 .tpill.win{color:var(--bg);background:linear-gradient(135deg,#f6d98a,#e8c468);box-shadow:0 0 0 1px var(--gold), 0 2px 14px rgba(232,196,104,.7);}
 .tcard .tc-acts{display:flex;flex-direction:column;gap:6px;}
 .tc-empty{color:var(--muted);text-align:center;padding:40px 10px;border:1px dashed var(--line);border-radius:14px;}
+.welcome-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 24px;text-align:center;}
+.welcome-title{font-family:var(--display);font-size:26px;letter-spacing:.04em;color:var(--gold);margin-bottom:12px;}
+.welcome-text{color:var(--muted);font-size:15px;line-height:1.55;}
 .backHome{margin:14px 0 4px;}
 .flex-end{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .divider{height:1px;background:var(--line);margin:14px 0;}
@@ -578,9 +581,9 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
     <button data-tab="leaderboard">Leaderboard</button>
     <button data-tab="skins" id="skinsTab" class="hide">Giant Skins</button>
     <button data-tab="setup">Setup</button>
-    <button data-tab="data">Data</button>
     <button data-tab="ledger">Ledger</button>
     <button data-tab="detail">Detail</button>
+    <button data-tab="data">Sync</button>
   </nav>
   <main id="view"></main>
 </div>
@@ -592,7 +595,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.20;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.26;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -726,12 +729,34 @@ function snapshot(s){
 function refreshLibEntry(){
   if(!state || !state.id) return;
   let lib = loadLibrary();
-  if(!lib) lib = { activeId:state.id, tournaments:[] };
+  if(!lib) return;                       // no library yet → nothing to mirror
   const i = lib.tournaments.findIndex(t=>t.id===state.id);
-  const entry = snapshot(state);
-  if(i>=0) lib.tournaments[i]=entry; else lib.tournaments.push(entry);
+  if(i<0) return;                        // not a registered tournament → don't auto-create
+  lib.tournaments[i] = snapshot(state);
   lib.activeId = state.id;
   saveLibrary(lib);
+}
+
+// Has this tournament actually been set up (vs a pristine, never-touched blank)?
+function hasContent(s){
+  if(!s) return false;
+  if(s.players && Object.keys(s.players).length>0) return true;
+  if(s.teamNames && ((s.teamNames.R||"").trim() || (s.teamNames.B||"").trim())) return true;
+  if(Array.isArray(s.rounds)){
+    for(const r of s.rounds){
+      if(r && Array.isArray(r.matches)){
+        for(const m of r.matches){
+          if(m && m.scores){
+            for(const k in m.scores){
+              const arr=m.scores[k];
+              if(Array.isArray(arr) && arr.some(v=>v!=null && v!=="")) return true;
+            }
+          }
+        }
+      }
+    }
+  }
+  return false;
 }
 
 // Run a function with a different state temporarily (for reading other
@@ -779,8 +804,12 @@ function renderHome(){
   let lib = loadLibrary();
   if(!lib){ lib = { activeId:null, tournaments:[] }; saveLibrary(lib); }
   const listEl = document.getElementById("homeList");
+  bindHome();   // wire the New button + card delegation (idempotent) BEFORE any early return
   if(!lib.tournaments.length){
-    listEl.innerHTML = `<div class="tc-empty">No tournaments yet.<br>Tap “+ New Tournament” to create your first one.</div>`;
+    listEl.innerHTML = `<div class="welcome-card">
+      <div class="welcome-title">Welcome to Cup Captain!</div>
+      <div class="welcome-text">To get started with setup, click add tournament.</div>
+    </div>`;
     return;
   }
   // Newest-saved first.
@@ -815,6 +844,7 @@ function bindHome(){
   const homeEl = document.getElementById("home");
   if(!homeEl) return;
   homeEl.addEventListener("click", e=>{
+    if(e.target.closest("#homeNewBtn")){ newTournament(); return; }
     const rn = e.target.closest("[data-rename]");
     if(rn){ renameTournament(rn.dataset.rename); return; }
     const dl = e.target.closest("[data-del]");
@@ -822,8 +852,6 @@ function bindHome(){
     const card = e.target.closest(".tcard");
     if(card && card.dataset.open){ openTournament(card.dataset.open); }
   });
-  const nb = document.getElementById("homeNewBtn");
-  if(nb) nb.addEventListener("click", newTournament);
 }
 
 function openTournament(id){
@@ -841,14 +869,18 @@ function openTournament(id){
 }
 
 function newTournament(){
-  const name = prompt("Name this tournament:", "Border Battle");
-  if(name===null) return;
-  const s = blankState();
-  if(name.trim()) s.name = name.trim();
   const lib = loadLibrary() || { activeId:null, tournaments:[] };
+  // Pick a unique default name (no native prompt — those are blocked in some webviews).
+  const existing = new Set(lib.tournaments.map(t=>(t.name||"").trim()));
+  let name = "New Tournament", n = 2;
+  while(existing.has(name)){ name = "New Tournament "+n; n++; }
+  const s = blankState();
+  s.name = name;
   lib.tournaments.push(snapshot(s));
   lib.activeId = s.id; saveLibrary(lib);
   openTournament(s.id);
+  activeTab = "setup"; render();   // land on Setup to name it and add players
+  toast("Tournament created");
 }
 
 function renameTournament(id){
@@ -3166,16 +3198,35 @@ document.getElementById("backHomeBtn").addEventListener("click", showHome);
 state = loadState();
 if(!state.id) state.id = newId();
 
+// Was there real saved data before this load? (read before any save writes it)
+let hadSavedState = false;
+try{ hadSavedState = window.localStorage.getItem(STORAGE_KEY) != null; }catch(e){}
+
 let _lib = loadLibrary();
 if(!_lib){
-  // First run with the new build: adopt any existing single tournament.
-  _lib = { activeId: state.id, tournaments: [ snapshot(state) ] };
+  // First run on the multi-tournament build.
+  if(hadSavedState && hasContent(state)){
+    // Returning user with a real tournament already set up: adopt it.
+    _lib = { activeId: state.id, tournaments: [ snapshot(state) ], cleanedV24:true };
+  } else {
+    // Brand-new / never-set-up: start empty so the home screen shows the welcome card.
+    _lib = { activeId: null, tournaments: [], cleanedV24:true };
+  }
   saveLibrary(_lib);
 } else {
-  // Make the working state match the library's active tournament.
+  // One-time cleanup: drop tournaments auto-seeded by earlier builds that were
+  // never actually set up (no players, teams, or scores).
+  if(!_lib.cleanedV24){
+    _lib.tournaments = _lib.tournaments.filter(t => hasContent(migrate(t.state)));
+    _lib.cleanedV24 = true;
+    if(!_lib.tournaments.some(t=>t.id===_lib.activeId)){
+      _lib.activeId = _lib.tournaments[0] ? _lib.tournaments[0].id : null;
+    }
+    saveLibrary(_lib);
+  }
+  // Make the working state match the library's active tournament (if any).
   const act = _lib.tournaments.find(t=>t.id===_lib.activeId) || _lib.tournaments[0];
   if(act){ state = migrate(act.state); state.id = act.id; }
-  else { _lib.tournaments.push(snapshot(state)); _lib.activeId = state.id; saveLibrary(_lib); }
 }
 
 saveState();
