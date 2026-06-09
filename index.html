@@ -459,6 +459,30 @@ table.skn tr.skn-zero td{color:#5b6577;}
 
 .empty{color:var(--faint);font-style:italic;font-size:13px;padding:8px 0;}
 .hide{display:none !important;}
+
+/* ---------- tournaments home screen ---------- */
+#home{min-height:100vh;background:var(--bg);}
+.home-inner{max-width:1040px;margin:0 auto;padding:26px 16px 80px;}
+.home-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap;}
+.home-title{font-family:var(--display);font-size:34px;letter-spacing:.05em;color:var(--ink);}
+.home-title .acc{color:var(--gold);}
+.home-sub{color:var(--muted);font-size:13px;margin:-8px 0 16px;}
+.tcard{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;
+  display:flex;align-items:center;gap:14px;cursor:pointer;transition:.12s;}
+.tcard:hover{border-color:var(--gold);transform:translateY(-1px);}
+.tcard .tc-main{flex:1;min-width:0;}
+.tcard .tc-name{font-weight:700;font-size:17px;color:var(--ink);margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tcard .tc-meta{display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:12.5px;color:var(--muted);}
+.tcard .tc-vs .r{color:var(--red);font-weight:700;} .tcard .tc-vs .b{color:var(--blue);font-weight:700;}
+.tcard .tc-vs .vs{color:var(--faint);margin:0 .4em;}
+.tcard .tc-score{font-family:var(--mono);color:var(--ink);}
+.tpill{font-size:11px;font-weight:700;letter-spacing:.04em;padding:4px 9px;border-radius:999px;border:1px solid var(--line);white-space:nowrap;}
+.tpill.muted{color:var(--muted);}
+.tpill.live{color:var(--gold);border-color:var(--gold);}
+.tpill.win{color:var(--bg);background:var(--gold);border-color:var(--gold);}
+.tcard .tc-acts{display:flex;flex-direction:column;gap:6px;}
+.tc-empty{color:var(--muted);text-align:center;padding:40px 10px;border:1px dashed var(--line);border-radius:14px;}
+.backHome{margin:14px 0 4px;}
 .flex-end{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .divider{height:1px;background:var(--line);margin:14px 0;}
 
@@ -510,6 +534,17 @@ setTimeout(function(){s.classList.add("hide");},5500);
 setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})();
 </script>
 
+<section id="home" class="hide">
+  <div class="home-inner">
+    <div class="home-head">
+      <div class="home-title">CUP <span class="acc">CAPTAIN</span></div>
+      <button class="btn gold" id="homeNewBtn">+ New Tournament</button>
+    </div>
+    <div class="home-sub">Choose a tournament to open, or start a new one.</div>
+    <div id="homeList"></div>
+  </div>
+</section>
+
 <header class="board">
   <div class="board-inner">
     <div class="title" id="boardTitle"></div>
@@ -536,6 +571,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 </header>
 
 <div class="wrap">
+  <button class="btn ghost sm backHome" id="backHomeBtn">‹ Tournaments</button>
   <nav class="tabs">
     <button data-tab="play" class="active">Play</button>
     <button data-tab="leaderboard">Leaderboard</button>
@@ -554,7 +590,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.17;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.19;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -636,6 +672,7 @@ function seedRounds(){
 
 function blankState(){
   return {
+    id:newId(),
     name:"Border Battle",
     teamNames:{R:"",B:""},
     teamLetters:{R:"",B:""},
@@ -653,6 +690,198 @@ function blankState(){
   };
 }
 
+/* ============================================================
+   TOURNAMENT LIBRARY  (multiple saved tournaments)
+   The active tournament's working state lives under STORAGE_KEY exactly as
+   before (so sync/export/etc. are unchanged). A separate library under LIB_KEY
+   holds a snapshot of every tournament plus which one is active. Every
+   saveState() refreshes the active tournament's snapshot.
+   ============================================================ */
+const LIB_KEY = "rvb_tournaments_v1";
+let appScreen = "home";   // "home" (tournament list) or "app" (a tournament open)
+let libMem = null;        // in-memory fallback when localStorage is unavailable
+let homeBound = false;    // delegated home-screen click handler attached once
+
+function newId(){ return "trn_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2,7); }
+
+function loadLibrary(){
+  try{
+    const raw = window.localStorage.getItem(LIB_KEY);
+    if(raw){ const p = JSON.parse(raw); if(p && Array.isArray(p.tournaments)) return p; }
+  }catch(e){}
+  return libMem;   // null if never set
+}
+function saveLibrary(lib){
+  libMem = lib;    // always keep an in-memory copy so the app works without storage
+  try{ window.localStorage.setItem(LIB_KEY, JSON.stringify(lib)); }catch(e){}
+}
+
+function snapshot(s){
+  return { id:s.id, name:s.name, savedAt:Date.now(), state:JSON.parse(JSON.stringify(s)) };
+}
+
+// Mirror the current working state into its library entry (called from saveState).
+function refreshLibEntry(){
+  if(!state || !state.id) return;
+  let lib = loadLibrary();
+  if(!lib) lib = { activeId:state.id, tournaments:[] };
+  const i = lib.tournaments.findIndex(t=>t.id===state.id);
+  const entry = snapshot(state);
+  if(i>=0) lib.tournaments[i]=entry; else lib.tournaments.push(entry);
+  lib.activeId = state.id;
+  saveLibrary(lib);
+}
+
+// Run a function with a different state temporarily (for reading other
+// tournaments' status without disturbing the active one).
+function withState(s, fn){ const prev=state; state=s; try{ return fn(); } finally{ state=prev; } }
+
+// Status summary for one tournament's state (run inside withState).
+function tournamentInfo(){
+  const tot = totals();
+  const total = totalAvailable();
+  const threshold = total>0 ? total/2 + 0.5 : 0;
+  const dec = tot.R + tot.B;
+  let status, cls;
+  if(tot.matchCount===0){ status="Not started"; cls="muted"; }
+  else if(total>0 && tot.R>=threshold){ status=teamName("R")+" won 🏆"; cls="win"; }
+  else if(total>0 && tot.B>=threshold){ status=teamName("B")+" won 🏆"; cls="win"; }
+  else if(total>0 && dec===total && tot.R===tot.B){
+    status = state.defending ? teamName(state.defending)+" retain 🏆" : "Tied · playoff"; cls="win";
+  }
+  else if(dec>0){ status="In progress"; cls="live"; }
+  else { status="Ready"; cls="muted"; }
+  return {
+    status, cls, R:tot.R, B:tot.B, total,
+    rName:teamName("R"), bName:teamName("B"),
+    cur:currentRoundNum(), nRounds:state.numRounds,
+    players:Object.keys(state.players).length,
+  };
+}
+
+function showHome(){
+  appScreen="home";
+  document.getElementById("home").classList.remove("hide");
+  document.querySelector("header.board").classList.add("hide");
+  document.querySelector(".wrap").classList.add("hide");
+  renderHome();
+}
+function showApp(){
+  appScreen="app";
+  document.getElementById("home").classList.add("hide");
+  document.querySelector("header.board").classList.remove("hide");
+  document.querySelector(".wrap").classList.remove("hide");
+}
+
+function renderHome(){
+  let lib = loadLibrary();
+  if(!lib){ lib = { activeId:null, tournaments:[] }; saveLibrary(lib); }
+  const listEl = document.getElementById("homeList");
+  if(!lib.tournaments.length){
+    listEl.innerHTML = `<div class="tc-empty">No tournaments yet.<br>Tap “+ New Tournament” to create your first one.</div>`;
+    return;
+  }
+  // Newest-saved first.
+  const items = lib.tournaments.slice().sort((a,b)=>(b.savedAt||0)-(a.savedAt||0));
+  listEl.innerHTML = items.map(t=>{
+    const st = migrate(t.state);
+    const info = withState(st, ()=>tournamentInfo());
+    const when = t.savedAt ? new Date(t.savedAt).toLocaleDateString(undefined,{month:"short",day:"numeric"}) : "";
+    return `<div class="tcard" data-open="${escapeHtml(t.id)}">
+      <div class="tc-main">
+        <div class="tc-name">${escapeHtml(t.name||"Untitled")}</div>
+        <div class="tc-meta">
+          <span class="tc-vs"><span class="r">${escapeHtml(info.rName)}</span><span class="vs">vs</span><span class="b">${escapeHtml(info.bName)}</span></span>
+          <span class="tc-score">${fmtPts(info.R)}–${fmtPts(info.B)}</span>
+          <span>Round ${info.cur}/${info.nRounds}</span>
+          <span>${info.players} players</span>
+          ${when?`<span>saved ${escapeHtml(when)}</span>`:""}
+        </div>
+      </div>
+      <span class="tpill ${info.cls}">${escapeHtml(info.status)}</span>
+      <div class="tc-acts">
+        <button class="btn sm" data-rename="${escapeHtml(t.id)}">Rename</button>
+        <button class="btn sm danger" data-del="${escapeHtml(t.id)}">Delete</button>
+      </div>
+    </div>`;
+  }).join("");
+
+  bindHome();
+}
+
+// One delegated click handler on the (stable) #home element. Survives every
+// re-render of the list and is robust across environments.
+function bindHome(){
+  if(homeBound) return;
+  homeBound = true;
+  const homeEl = document.getElementById("home");
+  if(!homeEl) return;
+  homeEl.addEventListener("click", e=>{
+    const rn = e.target.closest("[data-rename]");
+    if(rn){ renameTournament(rn.dataset.rename); return; }
+    const dl = e.target.closest("[data-del]");
+    if(dl){ deleteTournament(dl.dataset.del); return; }
+    const card = e.target.closest(".tcard");
+    if(card && card.dataset.open){ openTournament(card.dataset.open); }
+  });
+  const nb = document.getElementById("homeNewBtn");
+  if(nb) nb.addEventListener("click", newTournament);
+}
+
+function openTournament(id){
+  const lib = loadLibrary(); if(!lib) return;
+  const t = lib.tournaments.find(x=>x.id===id); if(!t) return;
+  state = migrate(t.state);
+  state.id = id;
+  lib.activeId = id; saveLibrary(lib);
+  activeTab = "play"; playAutoHole = true;
+  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set();
+  saveState();          // writes STORAGE_KEY + refreshes this entry
+  showApp();
+  render();
+  toast("Opened “"+(state.name||"Untitled")+"”");
+}
+
+function newTournament(){
+  const name = prompt("Name this tournament:", "Border Battle");
+  if(name===null) return;
+  const s = blankState();
+  if(name.trim()) s.name = name.trim();
+  const lib = loadLibrary() || { activeId:null, tournaments:[] };
+  lib.tournaments.push(snapshot(s));
+  lib.activeId = s.id; saveLibrary(lib);
+  openTournament(s.id);
+}
+
+function renameTournament(id){
+  const lib = loadLibrary(); if(!lib) return;
+  const t = lib.tournaments.find(x=>x.id===id); if(!t) return;
+  const name = prompt("Rename tournament:", t.name||"");
+  if(name===null) return;
+  t.name = name.trim() || t.name;
+  t.state.name = t.name;
+  if(state && state.id===id) state.name = t.name;
+  saveLibrary(lib);
+  renderHome();
+}
+
+function deleteTournament(id){
+  const lib = loadLibrary(); if(!lib) return;
+  const t = lib.tournaments.find(x=>x.id===id); if(!t) return;
+  if(!confirm("Delete “"+(t.name||"Untitled")+"”? This permanently removes its players, scores and pairings.")) return;
+  lib.tournaments = lib.tournaments.filter(x=>x.id!==id);
+  if(lib.activeId===id) lib.activeId = lib.tournaments[0] ? lib.tournaments[0].id : null;
+  saveLibrary(lib);
+  // If we just deleted the open tournament, drop back to a safe working state.
+  if(state && state.id===id){
+    if(lib.activeId){ state = migrate(lib.tournaments.find(x=>x.id===lib.activeId).state); state.id=lib.activeId; }
+    else { state = blankState(); }
+    saveState();
+  }
+  renderHome();
+  toast("Deleted");
+}
+
 function loadState(){
   let raw=null;
   try{ raw = window.localStorage.getItem(STORAGE_KEY); }
@@ -668,6 +897,7 @@ function loadState(){
 }
 
 function migrate(s){
+  if(!s.id) s.id = newId();
   // Ensure 6 rounds exist; preserve existing data and user-chosen formats.
   if(!Array.isArray(s.rounds) || !s.rounds.length){
     s.rounds = seedRounds();
@@ -710,6 +940,7 @@ function saveState(){
   try{ window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
   catch(e){ lsOK=false; memFallback=state; }
   if(lsOK===false) memFallback=state;
+  refreshLibEntry();    // mirror this tournament into the multi-tournament library
   pushState();   // mirror to the cloud room if sync is connected
 }
 
@@ -1794,8 +2025,10 @@ function bindSetup(){
   $("exportBtn").addEventListener("click",exportJSON);  $("importBtn").addEventListener("click",()=>$("importFile").click());
   $("importFile").addEventListener("change",importJSON);
   $("resetBtn").addEventListener("click",()=>{
-    if(confirm("Reset everything? This clears all players, scores and pairings.")){
-      state=blankState(); saveState(); render(); toast("Reset complete");
+    if(confirm("Reset this tournament? This clears its players, scores and pairings.")){
+      const keepId=state.id, keepName=state.name;
+      state=blankState(); state.id=keepId; state.name=keepName;
+      saveState(); render(); toast("Reset complete");
     }
   });
 
@@ -2868,7 +3101,8 @@ function importJSON(e){
     try{
       const parsed=JSON.parse(reader.result);
       if(!parsed || !parsed.players || !parsed.rounds) throw new Error("missing fields");
-      state=migrate(parsed); saveState(); render(); toast("Imported");
+      const keepId = state && state.id;
+      state=migrate(parsed); if(keepId) state.id=keepId; saveState(); render(); toast("Imported");
     }catch(err){ toast("Invalid file"); }
   };
   reader.readAsText(file);
@@ -2896,13 +3130,32 @@ document.querySelectorAll(".tabs button").forEach(b=>{
   });
 });
 
+/* Tournament-list (home) controls */
+document.getElementById("backHomeBtn").addEventListener("click", showHome);
+
 /* ============================================================
    Boot
    ============================================================ */
-state=loadState();
+state = loadState();
+if(!state.id) state.id = newId();
+
+let _lib = loadLibrary();
+if(!_lib){
+  // First run with the new build: adopt any existing single tournament.
+  _lib = { activeId: state.id, tournaments: [ snapshot(state) ] };
+  saveLibrary(_lib);
+} else {
+  // Make the working state match the library's active tournament.
+  const act = _lib.tournaments.find(t=>t.id===_lib.activeId) || _lib.tournaments[0];
+  if(act){ state = migrate(act.state); state.id = act.id; }
+  else { _lib.tournaments.push(snapshot(state)); _lib.activeId = state.id; saveLibrary(_lib); }
+}
+
 saveState();
-render();
+render();          // prepare the app view (kept hidden behind the home screen)
 initSync();
+showHome();        // after the splash, land on the tournament list
+
 (function(){ const txt="v "+APP_VERSION.toFixed(2).replace(/^0/,""); const v=document.getElementById("verTag"); if(v) v.textContent=txt; const sv=document.getElementById("splashVer"); if(sv) sv.textContent=txt; })();
 </script>
 </body>
