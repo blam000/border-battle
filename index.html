@@ -486,7 +486,8 @@ table.skn tr.skn-zero td{color:#5b6577;}
 .welcome-card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:34px 24px;text-align:center;}
 .welcome-title{font-family:var(--display);font-size:26px;letter-spacing:.04em;color:var(--gold);margin-bottom:12px;}
 .welcome-text{color:var(--muted);font-size:15px;line-height:1.55;}
-.backHome{margin:14px 0 4px;}
+.backHome{display:inline-flex;align-items:center;justify-content:center;width:38px;height:38px;padding:0;border-radius:10px;margin:12px 0 8px;color:var(--muted);}
+.backHome:hover{color:var(--ink);border-color:var(--gold);}
 .flex-end{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 .divider{height:1px;background:var(--line);margin:14px 0;}
 
@@ -575,7 +576,9 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 </header>
 
 <div class="wrap">
-  <button class="btn ghost sm backHome" id="backHomeBtn">‹ Tournaments</button>
+  <button class="btn ghost backHome" id="backHomeBtn" aria-label="Back to tournaments" title="Back to tournaments">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
   <nav class="tabs">
     <button data-tab="play" class="active">Play</button>
     <button data-tab="leaderboard">Leaderboard</button>
@@ -595,7 +598,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.26;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.27;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
