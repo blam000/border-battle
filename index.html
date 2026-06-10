@@ -356,7 +356,7 @@ table.qp th,table.qp td{text-align:center;border-bottom:1px solid var(--line);}
 .qp2-hcell.sel{background:rgba(31,157,87,.20);}
 .qp2-cell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;align-items:center;justify-content:center;
   font-family:var(--mono);border-left:1px solid var(--line);scroll-snap-align:start;}
-.qp2-cell .qp-score{font-size:22px;color:var(--ink);} .qp2-cell .qp-score sub{font-size:15px;color:var(--muted);}
+.qp2-cell .qp-score{font-size:22px;color:var(--ink);position:relative;top:2px;} .qp2-cell .qp-score sub{font-size:15px;color:var(--muted);}
 .qp2-cell .qp-blank{color:var(--faint);font-size:16px;}
 .qp2-end{flex:0 0 auto;}
 .qp2-names{position:absolute;top:0;left:0;width:var(--qp-namew);z-index:3;background:var(--panel);border-right:1px solid var(--line);pointer-events:none;}
@@ -598,7 +598,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.29;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.30;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
