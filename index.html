@@ -359,6 +359,15 @@ table.qp th,table.qp td{text-align:center;border-bottom:1px solid var(--line);}
 .qp2-cell .qp-score{font-size:22px;color:var(--ink);position:relative;top:2px;} .qp2-cell .qp-score sub{font-size:15px;color:var(--muted);}
 .qp2-cell .qp-blank{color:var(--faint);font-size:16px;}
 .qp2-end{flex:0 0 auto;}
+.qp2-lockcell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;align-items:center;justify-content:center;
+  background:var(--panel-2);border-left:1px solid var(--line);}
+.qp2-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:74px;height:74px;
+  border-radius:14px;border:1px solid var(--line);background:var(--panel);color:var(--muted);font-family:var(--body);
+  font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;cursor:pointer;}
+.qp2-lock .lk-ico{font-size:22px;line-height:1;}
+.qp2-lock:disabled{opacity:.4;cursor:default;}
+.qp2-lock.on{background:var(--green-deep);border-color:var(--green);color:#fff;}
+.qp2.locked .qp-circle{opacity:.5;pointer-events:none;}
 .qp2-names{position:absolute;top:0;left:0;width:var(--qp-namew);z-index:3;background:var(--panel);border-right:1px solid var(--line);pointer-events:none;}
 .qp2-nrow{height:var(--qp-rowh);border-bottom:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;padding:0 12px;}
 .qp2-nrow:last-child{border-bottom:none;}
@@ -598,7 +607,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.34;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.36;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -647,6 +656,10 @@ const DEFAULT_COURSE = {
    ============================================================ */
 let state = null;
 let activeTab = "play";
+// Lock indicators — shared by the Play tab toggle and the Setup pairing rows so the
+// locked icon is always identical in both places.
+const LOCK_ICON = "🔒";
+const UNLOCK_ICON = "🔓";
 let expandedMatch = null;     // matchId currently expanded on the leaderboard
 let playRound = null;         // round id selected in the quick Play tab
 let playMatch = null;         // match id selected in the quick Play tab (one at a time)
@@ -1923,10 +1936,10 @@ function pairingsSection(r){
     html+=`<div class="pair-row" data-rid="${r.id}" data-mid="${m.id}">
       <div class="pair-side">${(m.red||[]).map((id,i)=>selBox(r,m,"red",i,"R")).join("")}</div>
       <div class="pair-side">${(m.blue||[]).map((id,i)=>selBox(r,m,"blue",i,"B")).join("")}</div>
-      <button class="x" data-delmatch="${r.id}" data-mid="${m.id}" style="background:none;border:none;color:var(--faint);font-size:18px">×</button>
+      ${m.locked
+        ? `<span class="pair-lock" title="Locked — finalized in Play" style="font-size:18px;line-height:1;text-align:center">${LOCK_ICON}</span>`
+        : `<button class="x" data-delmatch="${r.id}" data-mid="${m.id}" style="background:none;border:none;color:var(--faint);font-size:18px">×</button>`}
     </div>`;
-    const dupWarn = pairingReused(r,m);
-    if(dupWarn) html+=`<div class="warn">⚠ This 2-man pairing is already used in ${dupWarn}.</div>`;
   });
   return html;
 }
@@ -2235,11 +2248,17 @@ function renderPlayQuick(){
   const balls = unitBalls(r, matches);
   const sepAt = i => i>0 && balls[i].gi!==balls[i-1].gi;
 
-  html += `<div class="qp2" id="qp2">`;
+  // Locked state for this Play unit (one or two matches). A unit is lockable once every
+  // hole of every match in it has a score; locking makes the grid read-only.
+  const unitAllScored = matches.every(mm=>matchAllHolesScored(r,mm));
+  const unitLocked = matches.every(mm=>mm.locked);
+
+  html += `<div class="qp2${unitLocked?" locked":""}" id="qp2">`;
   // scrolling holes layer
   html += `<div class="qp2-scroll" id="qp2scroll"><div class="qp2-track">`;
   html += `<div class="qp2-trow qp2-hrow"><div class="qp2-spacer"></div>`;
   for(let h=0;h<18;h++) html += `<div class="qp2-hcell" data-h="${h}"><span class="qp2-hn">${h+1}</span><span class="qp2-par">Par ${c.holes[h].par}</span></div>`;
+  html += `<div class="qp2-lockcell"><button class="qp2-lock${unitLocked?" on":""}" id="qp2lock"${(unitAllScored||unitLocked)?"":" disabled"}><span class="lk-ico">${unitLocked?LOCK_ICON:UNLOCK_ICON}</span>${unitLocked?"Locked":"Lock"}</button></div>`;
   html += `<div class="qp2-end"></div></div>`;
   balls.forEach((b,i)=>{
     html += `<div class="qp2-trow ${sepAt(i)?"sep":""}"><div class="qp2-spacer"></div>`;
@@ -2454,10 +2473,22 @@ function bindPlayQuick(){
     const sc=document.getElementById("qp2scroll"); if(!sc) return;
     sc.scrollTo({left:Number(e.currentTarget.dataset.h)*QP_HOLEW, behavior:"smooth"});
   }));
+  const lockBtn=document.getElementById("qp2lock");
+  if(lockBtn) lockBtn.addEventListener("click",()=>{
+    if(lockBtn.disabled) return;
+    const rr=activeRounds().find(x=>x.id===playRound); if(!rr) return;
+    const mm=unitMatches(rr, playMatch); if(!mm.length) return;
+    const nowLocked = !mm.every(x=>x.locked);
+    mm.forEach(x=>{ x.locked = nowLocked; });
+    saveState(); renderPlayQuick();
+  });
 }
 
 /* ----- one-touch entry overlay ----- */
 function openEntry(roundId, matchId, holeIdx, activeKey){
+  // A locked match is read-only: don't open the data-entry screen.
+  const rr=activeRounds().find(x=>x.id===roundId);
+  if(rr){ const mm=unitMatches(rr, matchId); if(mm.length && mm.every(x=>x.locked)) return; }
   entry={roundId, matchId, holeIdx, activeKey, touched:new Set()};
   tenPending=false;
   renderEntryModal();
@@ -2534,8 +2565,16 @@ function entrySet(value){
   if(!m.scores) m.scores={};
   if(!m.scores[key]) m.scores[key]=Array(18).fill(null);
 
-  if(value==="clear"){ m.scores[key][entry.holeIdx]=null; entry.touched.delete(key); tenPending=false; saveState(); renderEntryModal(); renderHeader(); return; }
+  // Removing a score unlocks the unit and lets the finalize prompt fire again later.
+  const unlockUnit=()=>{
+    matches.forEach(mm=>{ mm.locked=false; endedAnnounced.delete(mm.id); });
+    const fk=matches.map(mm=>mm.id).join("|");
+    finalizePrompted.delete(fk); finalizeDeclined.delete(fk);
+  };
 
+  if(value==="clear"){ m.scores[key][entry.holeIdx]=null; entry.touched.delete(key); tenPending=false; unlockUnit(); saveState(); renderEntryModal(); renderHeader(); return; }
+
+  if(value===null) unlockUnit();
   m.scores[key][entry.holeIdx] = (value===null ? null : value);
   entry.touched.add(key);
   tenPending=false;
@@ -2625,7 +2664,7 @@ function showFinalizePrompt(round, matches, variant){
     </div></div>`;
   document.body.appendChild(ov);
   document.getElementById("finNo").addEventListener("click",()=>{ finalizeDeclined.add(key); ov.remove(); });
-  document.getElementById("finYes").addEventListener("click",()=>{ ov.remove(); finalizeMatch(round); });
+  document.getElementById("finYes").addEventListener("click",()=>{ ov.remove(); matches.forEach(mm=>{ mm.locked=true; }); saveState(); finalizeMatch(round); });
 }
 function finalizeMatch(round){
   activeTab="leaderboard"; initRoundExpand(); render();
