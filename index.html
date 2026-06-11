@@ -351,7 +351,7 @@ table.qp th,table.qp td{text-align:center;border-bottom:1px solid var(--line);}
 .qp2-spacer{flex:0 0 calc(var(--qp-namew) + var(--qp-holew));width:calc(var(--qp-namew) + var(--qp-holew));}
 .qp2-hcell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:var(--panel-2);border-left:1px solid var(--line);cursor:pointer;scroll-snap-align:start;}
-.qp2-hcell .qp2-hn{font-family:var(--display);font-size:24px;color:var(--ink);line-height:1;}
+.qp2-hcell .qp2-hn{font-family:var(--display);font-size:24px;color:var(--ink);line-height:1;position:relative;top:2px;}
 .qp2-hcell .qp2-par{font-size:16px;color:var(--muted);margin-top:4px;}
 .qp2-hcell.sel{background:rgba(31,157,87,.20);}
 .qp2-cell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;align-items:center;justify-content:center;
@@ -598,7 +598,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.30;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.31;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
