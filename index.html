@@ -99,7 +99,8 @@ textarea{font-family:var(--mono);font-size:12px;line-height:1.4;resize:vertical;
 .fin-title{font-family:var(--display);font-size:24px;color:var(--gold);margin-bottom:8px;}
 .fin-msg{color:var(--ink);font-size:14px;line-height:1.45;margin-bottom:18px;}
 .fin-results{margin:0 0 14px;display:flex;flex-direction:column;gap:6px;}
-.fin-line{font-size:14px;color:var(--muted);font-family:var(--mono);}
+.fin-line{font-size:14px;color:var(--muted);font-family:var(--mono);display:flex;flex-direction:column;gap:3px;}
+.fin-line .fin-vs{color:var(--muted);}
 .fin-line b{font-weight:700;}
 .fin-line b.r{color:var(--red);} .fin-line b.b{color:var(--blue);}
 .fin-btns{display:flex;gap:10px;justify-content:center;}
@@ -151,6 +152,9 @@ input::placeholder{color:var(--faint);}
 /* round setup */
 .round-block{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden;}
 .round-head{display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--panel-2);}
+.round-head.collapsible{cursor:pointer;}
+.round-head .round-chev{margin-left:8px;color:var(--gold);font-size:13px;flex:0 0 auto;}
+.round-head .fmt-sel:disabled{opacity:.7;cursor:default;}
 .round-head .num{font-family:var(--display);font-size:22px;color:var(--gold);min-width:26px;}
 .round-head .fmt{font-weight:700;}
 .round-head .fmt-sel{font-family:var(--body);font-weight:700;font-size:14px;color:var(--ink);
@@ -607,7 +611,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.36;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.42;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -659,7 +663,8 @@ let activeTab = "play";
 // Lock indicators — shared by the Play tab toggle and the Setup pairing rows so the
 // locked icon is always identical in both places.
 const LOCK_ICON = "🔒";
-const UNLOCK_ICON = "🔓";
+// Open padlock with the shackle swung out to the right, so "unlocked" reads clearly.
+const UNLOCK_ICON = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>';
 let expandedMatch = null;     // matchId currently expanded on the leaderboard
 let playRound = null;         // round id selected in the quick Play tab
 let playMatch = null;         // match id selected in the quick Play tab (one at a time)
@@ -672,6 +677,7 @@ let entry = null;             // active one-touch entry overlay state
 let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
 let selOpen = false;          // round/match selector expanded on the Play tab
+let setupRoundOpen = {};      // Setup tab: round ids the user has manually expanded while collapsed
 let skinsOpen = {};           // roundId -> open? (default open) on the Giant Skins tab
 let lbRoundOpen = {};         // roundId -> open? on the Leaderboard tab
 let memFallback = null;       // in-memory store if localStorage unusable
@@ -877,7 +883,7 @@ function openTournament(id){
   state.id = id;
   lib.activeId = id; saveLibrary(lib);
   activeTab = "play"; playAutoHole = true;
-  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set();
+  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={};
   saveState();          // writes STORAGE_KEY + refreshes this entry
   showApp();
   render();
@@ -1357,13 +1363,17 @@ function roundFullyScored(round){
   if(!round || !round.matches.length) return false;
   return round.matches.every(m=>matchStatus(round,m).finished);
 }
-// Current round advances to a round once its pairings are set AND the previous
-// round has all its scores entered (round 1 has no previous-round requirement).
+// A round is "fully locked" when it has matches and every one is locked (finalized in Play).
+function roundFullyLocked(round){
+  return !!round && round.matches.length>0 && round.matches.every(m=>m.locked);
+}
+// Current round advances to a round once its pairings are populated AND the previous
+// round has been fully locked/finalized (round 1 has no previous-round requirement).
 function computedCurrentRound(){
   const rounds=activeRounds();
   let cur=1;
   rounds.forEach((r,i)=>{
-    const prevDone = i===0 ? true : roundFullyScored(rounds[i-1]);
+    const prevDone = i===0 ? true : roundFullyLocked(rounds[i-1]);
     if(roundFullySetUp(r) && prevDone) cur=r.n;
   });
   return cur;
@@ -1373,6 +1383,20 @@ function currentRoundNum(){
   const n=state.currentRound;
   if(typeof n==="number" && n>=1 && n<=state.numRounds) return n;
   return computedCurrentRound();
+}
+// When a round becomes fully locked and the next round's pairings are populated, advance the
+// active round — and the Play view — forward to it. Forward-only; never moves backward.
+function playMaybeAdvance(){
+  const target=computedCurrentRound();           // latest round with prev-locked + this-populated
+  if(typeof state.currentRound==="number" && target>state.currentRound) state.currentRound=target;
+  const curN=currentRoundNum();
+  const rounds=activeRounds();
+  const shown=rounds.find(x=>x.id===playRound);
+  const shownN=shown?shown.n:0;
+  if(curN>shownN){
+    const r=rounds.find(x=>x.n===curN);
+    if(r){ playRound=r.id; playMatch=null; currentHole=0; playAutoHole=true; }
+  }
 }
 // On entering Leaderboard/Skins, expand only the current round.
 function initRoundExpand(){
@@ -1540,7 +1564,7 @@ function renderSetup(){
       return `<div class="prow" data-pid="${p.id}">
         <input class="pname" type="text" value="${escapeHtml(p.name)}" placeholder="Player name" data-pid="${p.id}">
         ${state.useHcp?`<input class="pidx" type="number" step="0.1" value="${p.index===null||p.index===undefined?"":p.index}" placeholder="idx" data-pid="${p.id}">`:""}
-        <button class="x" data-pid="${p.id}" ${used?"disabled title='Remove from matches first'":""}>×</button>
+        <button class="x" data-pid="${p.id}"${used?" title='Assigned to a match — remove from pairings first'":""}>×</button>
       </div>`;
     }).join("");
     if(!list.length) rows=`<div class="empty">No players yet.</div>`;
@@ -1652,28 +1676,38 @@ function bindData(){
 
 function roundSetupBlock(r, isFirst){
   const c = courseOf(r);
+  // Lock-driven Setup behavior: any locked match freezes the round format; once every
+  // match in the round is locked the round collapses by default (tap the head to expand).
+  const someLocked = r.matches.some(m=>m.locked);
+  const allLocked  = r.matches.length>0 && r.matches.every(m=>m.locked);
+  const collapsible = allLocked;
+  const open = !collapsible || !!setupRoundOpen[r.id];
+
   let html = `<div class="round-block" data-rid="${r.id}">
-    <div class="round-head">
+    <div class="round-head${collapsible?" collapsible":""}"${collapsible?` data-rtoggle="${r.id}"`:""}>
       <span class="num">${r.n}</span>
-      <select class="fmt-sel" data-fmtsel="${r.id}">
+      <select class="fmt-sel" data-fmtsel="${r.id}"${someLocked?" disabled":""}>
         ${Object.keys(FMT_ALLOWANCE).map(f=>`<option value="${f}" ${r.fmt===f?"selected":""}>${f}</option>`).join("")}
       </select>
       <button class="fmt-info-btn" data-fmtinfo="${r.id}" aria-label="Format info" title="Format info">ⓘ</button>
       <span class="alw">${FMT_ALLOWANCE[r.fmt]}</span>
+      ${collapsible?`<span class="round-chev">${open?"▾":"▸"}</span>`:""}
     </div>
-    <div class="fmt-info" id="fmtinfo-${r.id}" hidden>${escapeHtml(FMT_INFO[r.fmt]||"")}</div>
-    <div class="round-body">`;
+    <div class="fmt-info" id="fmtinfo-${r.id}" hidden>${escapeHtml(FMT_INFO[r.fmt]||"")}</div>`;
 
-  if(state.sameCourseAll){
-    html += `<div class="course-note">Course: <strong>${escapeHtml(c.courseName||"—")}</strong>${c.tees?` · ${escapeHtml(c.tees)} tees`:""}${state.useHcp?` · CR ${c.cr} / Slope ${c.slope} / Par ${c.par}`:""}</div>`;
-  } else {
-    html += courseEditorHtml(r, r.id);
+  if(open){
+    html += `<div class="round-body">`;
+    if(state.sameCourseAll){
+      html += `<div class="course-note">Course: <strong>${escapeHtml(c.courseName||"—")}</strong>${c.tees?` · ${escapeHtml(c.tees)} tees`:""}${state.useHcp?` · CR ${c.cr} / Slope ${c.slope} / Par ${c.par}`:""}</div>`;
+    } else {
+      html += courseEditorHtml(r, r.id);
+    }
+    // pairings
+    html += pairingsSection(r);
+    html += `</div>`;
   }
 
-  // pairings
-  html += pairingsSection(r);
-
-  html += `</div></div>`;
+  html += `</div>`;
   return html;
 }
 
@@ -1919,6 +1953,12 @@ function playerOptions(team, selected, round){
   return opts;
 }
 
+// True once a match has at least one gross score entered anywhere (used to lock down
+// pairing deletion in Setup so scored matches can't be removed by accident).
+function matchHasAnyScore(m){
+  if(!m || !m.scores) return false;
+  return Object.values(m.scores).some(arr=> Array.isArray(arr) && arr.some(v=> v!==null && v!==undefined));
+}
 function pairingsSection(r){
   const singles = r.fmt==="Singles";
   const perSide = singles?1:2;
@@ -1938,7 +1978,9 @@ function pairingsSection(r){
       <div class="pair-side">${(m.blue||[]).map((id,i)=>selBox(r,m,"blue",i,"B")).join("")}</div>
       ${m.locked
         ? `<span class="pair-lock" title="Locked — finalized in Play" style="font-size:18px;line-height:1;text-align:center">${LOCK_ICON}</span>`
-        : `<button class="x" data-delmatch="${r.id}" data-mid="${m.id}" style="background:none;border:none;color:var(--faint);font-size:18px">×</button>`}
+        : (matchHasAnyScore(m)
+            ? `<button class="x" disabled title="This match has scores in Play — clear them first" style="background:none;border:none;color:var(--faint);font-size:18px;opacity:.35;cursor:default">×</button>`
+            : `<button class="x" data-delmatch="${r.id}" data-mid="${m.id}" style="background:none;border:none;color:var(--faint);font-size:18px">×</button>`)}
     </div>`;
   });
   return html;
@@ -1946,7 +1988,7 @@ function pairingsSection(r){
 
 function selBox(r,m,side,i,team){
   const id=m[side][i]||"";
-  return `<select data-rid="${r.id}" data-mid="${m.id}" data-side="${side}" data-slot="${i}">${playerOptions(team,id,r)}</select>`;
+  return `<select ${m.locked?"disabled ":""}data-rid="${r.id}" data-mid="${m.id}" data-side="${side}" data-slot="${i}">${playerOptions(team,id,r)}</select>`;
 }
 
 function playerInUse(pid){
@@ -2039,13 +2081,20 @@ function bindSetup(){
   }));
   view.querySelectorAll(".prow .x").forEach(b=>b.addEventListener("click",e=>{
     const pid=e.target.dataset.pid;
-    if(playerInUse(pid)) return;
+    if(playerInUse(pid)){
+      const nm=(((state.players[pid]||{}).name)||"").trim()||"This player";
+      const rns=state.rounds.filter(r=> r.matches.some(m=> (m.red||[]).includes(pid)||(m.blue||[]).includes(pid))).map(r=>r.n);
+      const where = rns.length ? ` (Round ${rns.join(", ")})` : "";
+      toast(`${nm} is in a match pairing${where} — remove from those matches first.`);
+      return;
+    }
     delete state.players[pid]; saveState(); renderSetup(); renderHeader();
   }));
 
   // round format change
   view.querySelectorAll("[data-fmtsel]").forEach(sel=>sel.addEventListener("change",e=>{
     const r=state.rounds.find(x=>x.id===e.target.dataset.fmtsel); if(!r) return;
+    if(r.matches.some(m=>m.locked)){ renderSetup(); return; }   // locked round: format frozen
     const newFmt=e.target.value;
     const oldPer = r.fmt==="Singles"?1:2;
     const newPer = newFmt==="Singles"?1:2;
@@ -2057,6 +2106,14 @@ function bindSetup(){
     }
     r.fmt=newFmt;
     saveState(); renderSetup(); renderHeader();
+  }));
+
+  // collapsed (fully-locked) round: tap the head to expand/collapse its pairings
+  view.querySelectorAll("[data-rtoggle]").forEach(h=>h.addEventListener("click",e=>{
+    if(e.target.closest("[data-fmtinfo]")) return;   // the info button has its own action
+    const id=h.dataset.rtoggle;
+    setupRoundOpen[id]=!setupRoundOpen[id];
+    renderSetup();
   }));
 
   // round format info tooltip
@@ -2114,6 +2171,7 @@ function bindSetup(){
     m[side][Number(slot)] = newId;
     // clean stale score keys
     pruneScores(m);
+    playMaybeAdvance();
     saveState(); renderSetup(); renderHeader();
   }));
 
@@ -2480,6 +2538,7 @@ function bindPlayQuick(){
     const mm=unitMatches(rr, playMatch); if(!mm.length) return;
     const nowLocked = !mm.every(x=>x.locked);
     mm.forEach(x=>{ x.locked = nowLocked; });
+    if(nowLocked) playMaybeAdvance();
     saveState(); renderPlayQuick();
   });
 }
@@ -2623,7 +2682,7 @@ function checkMatchEnded(round, matches){
 function resultLines(round, matches){
   return matches.map(mm=>{
     const lead=matchStatus(round,mm).standing, cls=lead>0?"r":lead<0?"b":"";
-    return `<div class="fin-line">${escapeHtml(sideFirstNames(mm,"R"))} v ${escapeHtml(sideFirstNames(mm,"B"))} <b class="${cls}">${escapeHtml(matchResultText(round,mm))}</b></div>`;
+    return `<div class="fin-line"><span class="fin-vs">${escapeHtml(sideFirstNames(mm,"R"))} v ${escapeHtml(sideFirstNames(mm,"B"))}</span><b class="fin-res ${cls}">${escapeHtml(matchResultText(round,mm))}</b></div>`;
   }).join("");
 }
 function showResultsDialog(round, matches){
@@ -2664,7 +2723,7 @@ function showFinalizePrompt(round, matches, variant){
     </div></div>`;
   document.body.appendChild(ov);
   document.getElementById("finNo").addEventListener("click",()=>{ finalizeDeclined.add(key); ov.remove(); });
-  document.getElementById("finYes").addEventListener("click",()=>{ ov.remove(); matches.forEach(mm=>{ mm.locked=true; }); saveState(); finalizeMatch(round); });
+  document.getElementById("finYes").addEventListener("click",()=>{ ov.remove(); matches.forEach(mm=>{ mm.locked=true; }); playMaybeAdvance(); saveState(); finalizeMatch(round); });
 }
 function finalizeMatch(round){
   activeTab="leaderboard"; initRoundExpand(); render();
