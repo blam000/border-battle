@@ -598,7 +598,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.33;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.34;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -3155,31 +3155,19 @@ async function exportJSON(){
   }catch(err){ toast("Export failed"); return; }
   const fname=((state.name||"cupcaptain").trim().replace(/[^a-z0-9]+/gi,"-").toLowerCase()||"cupcaptain")+".json";
 
-  const tryShare = async ()=>{
-    if(!navigator.canShare) return false;
-    const file=new File([json], fname, {type:"application/json"});
-    if(!navigator.canShare({files:[file]})) return false;
-    await navigator.share({files:[file], title:fname});
-    return true;
-  };
-  const tryDownload = ()=>{
+  // Download a single .json file.
+  try{
     const blob=new Blob([json],{type:"application/json"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=url; a.download=fname;
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),4000);
-    return true;
-  };
+    toast("Exported");
+    return;
+  }catch(err){ /* download unsupported → fall back below */ }
 
-  // Phones: prefer the native share sheet (Save to Files, email, …). Desktop: download.
-  const isTouch = (navigator.maxTouchPoints||0)>0 || ('ontouchstart' in window);
-  const order = isTouch ? [tryShare, tryDownload] : [tryDownload, tryShare];
-  for(const step of order){
-    try{ if(await step()){ toast("Exported"); return; } }
-    catch(err){ if(err && err.name==="AbortError") return; /* user cancelled share */ }
-  }
-  // Fallbacks: clipboard, then a manual-copy box.
+  // Fallbacks ONLY if the download couldn't run at all (no second file is produced).
   try{ await navigator.clipboard.writeText(json); toast("Copied JSON to clipboard"); return; }catch(err){}
   showCopyModal(json);
 }
