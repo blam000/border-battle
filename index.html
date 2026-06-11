@@ -598,7 +598,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.31;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.32;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1610,9 +1610,10 @@ function renderData(){
 }
 
 function bindData(){
+  const $=id=>document.getElementById(id);   // local helper (was missing → buttons unbound)
   // Save & sync
   $("exportBtn").addEventListener("click",exportJSON);
-  $("importBtn").addEventListener("click",()=>$("importFile").click());
+  $("importBtn").addEventListener("click",showImportModal);
   $("importFile").addEventListener("change",importJSON);
   $("resetBtn").addEventListener("click",()=>{
     if(confirm("Reset this tournament? This clears its players, scores and pairings.")){
@@ -3144,31 +3145,108 @@ function renderLedger(){
 /* ============================================================
    Export / Import
    ============================================================ */
-function exportJSON(){
-  const clean=JSON.parse(JSON.stringify(state));
-  clean.rounds.forEach(r=>delete r._editHoles);
-  if(clean.course) delete clean.course._editHoles;
-  const blob=new Blob([JSON.stringify(clean,null,2)],{type:"application/json"});
-  const a=document.createElement("a");
-  const fn=(state.name||"cupcaptain").trim().replace(/[^a-z0-9]+/gi,"-").toLowerCase()||"cupcaptain";
-  a.href=URL.createObjectURL(blob); a.download=fn+".json";
-  document.body.appendChild(a); a.click(); a.remove();
-  toast("Exported");
+async function exportJSON(){
+  let json;
+  try{
+    const clean=JSON.parse(JSON.stringify(state));
+    if(Array.isArray(clean.rounds)) clean.rounds.forEach(r=>{ if(r) delete r._editHoles; });
+    if(clean.course) delete clean.course._editHoles;
+    json=JSON.stringify(clean,null,2);
+  }catch(err){ toast("Export failed"); return; }
+  const fname=((state.name||"cupcaptain").trim().replace(/[^a-z0-9]+/gi,"-").toLowerCase()||"cupcaptain")+".json";
+
+  const tryShare = async ()=>{
+    if(!navigator.canShare) return false;
+    const file=new File([json], fname, {type:"application/json"});
+    if(!navigator.canShare({files:[file]})) return false;
+    await navigator.share({files:[file], title:fname});
+    return true;
+  };
+  const tryDownload = ()=>{
+    const blob=new Blob([json],{type:"application/json"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=fname;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),4000);
+    return true;
+  };
+
+  // Phones: prefer the native share sheet (Save to Files, email, …). Desktop: download.
+  const isTouch = (navigator.maxTouchPoints||0)>0 || ('ontouchstart' in window);
+  const order = isTouch ? [tryShare, tryDownload] : [tryDownload, tryShare];
+  for(const step of order){
+    try{ if(await step()){ toast("Exported"); return; } }
+    catch(err){ if(err && err.name==="AbortError") return; /* user cancelled share */ }
+  }
+  // Fallbacks: clipboard, then a manual-copy box.
+  try{ await navigator.clipboard.writeText(json); toast("Copied JSON to clipboard"); return; }catch(err){}
+  showCopyModal(json);
+}
+
+// Parse + load a tournament from a JSON string. Returns true on success.
+function loadJSONText(text){
+  try{
+    const parsed=JSON.parse(text);
+    if(!parsed || !parsed.players || !parsed.rounds) throw new Error("missing fields");
+    const keepId = state && state.id;
+    state=migrate(parsed); if(keepId) state.id=keepId;
+    saveState(); render(); toast("Imported");
+    return true;
+  }catch(err){ toast("Invalid JSON"); return false; }
 }
 
 function importJSON(e){
   const file=e.target.files[0]; if(!file) return;
   const reader=new FileReader();
-  reader.onload=()=>{
-    try{
-      const parsed=JSON.parse(reader.result);
-      if(!parsed || !parsed.players || !parsed.rounds) throw new Error("missing fields");
-      const keepId = state && state.id;
-      state=migrate(parsed); if(keepId) state.id=keepId; saveState(); render(); toast("Imported");
-    }catch(err){ toast("Invalid file"); }
-  };
+  reader.onload=()=>{ if(loadJSONText(reader.result)) document.querySelectorAll(".io-ov").forEach(el=>el.remove()); };
   reader.readAsText(file);
   e.target.value="";
+}
+
+// Read-only box so the user can copy the export when download/share/clipboard are unavailable.
+function showCopyModal(json){
+  const ov=document.createElement("div"); ov.className="fin-ov io-ov";
+  ov.innerHTML=`<div class="fin-box" style="max-width:540px;text-align:left">
+    <div class="fin-title" style="font-size:20px">Copy your tournament</div>
+    <div class="sub" style="margin-bottom:8px">Select all and copy this to save your tournament.</div>
+    <textarea id="ioText" readonly style="width:100%;height:200px">${escapeHtml(json)}</textarea>
+    <div class="fin-btns" style="margin-top:14px">
+      <button class="btn gold" id="ioCopy">Copy</button>
+      <button class="btn ghost" id="ioClose">Close</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close=()=>ov.remove();
+  ov.addEventListener("click",e=>{ if(e.target===ov) close(); });
+  ov.querySelector("#ioClose").addEventListener("click",close);
+  const ta=ov.querySelector("#ioText"); ta.focus(); ta.select();
+  ov.querySelector("#ioCopy").addEventListener("click",async ()=>{
+    ta.select();
+    try{ await navigator.clipboard.writeText(ta.value); toast("Copied"); }
+    catch(err){ try{ document.execCommand("copy"); toast("Copied"); }catch(e2){ toast("Select & copy manually"); } }
+  });
+}
+
+// Import via either a file or pasted JSON (paste works even where file pickers are blocked).
+function showImportModal(){
+  const ov=document.createElement("div"); ov.className="fin-ov io-ov";
+  ov.innerHTML=`<div class="fin-box" style="max-width:540px;text-align:left">
+    <div class="fin-title" style="font-size:20px">Import tournament</div>
+    <div class="sub" style="margin-bottom:10px">Choose an exported JSON file, or paste the JSON below.</div>
+    <div class="fin-btns" style="margin:0 0 12px;justify-content:flex-start"><button class="btn" id="imChoose">Choose file…</button></div>
+    <textarea id="imText" placeholder="…or paste exported JSON here" style="width:100%;height:170px"></textarea>
+    <div class="fin-btns" style="margin-top:14px">
+      <button class="btn gold" id="imLoad">Load pasted JSON</button>
+      <button class="btn ghost" id="imClose">Close</button>
+    </div>
+  </div>`;
+  document.body.appendChild(ov);
+  const close=()=>ov.remove();
+  ov.addEventListener("click",e=>{ if(e.target===ov) close(); });
+  ov.querySelector("#imClose").addEventListener("click",close);
+  ov.querySelector("#imChoose").addEventListener("click",()=>{ const f=document.getElementById("importFile"); if(f) f.click(); });
+  ov.querySelector("#imLoad").addEventListener("click",()=>{ if(loadJSONText(ov.querySelector("#imText").value)) close(); });
 }
 
 /* ============================================================
