@@ -611,7 +611,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.42;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.43;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1800,13 +1800,14 @@ function gcaTeesOf(course){
 }
 // Write a chosen tee into the scoped course (reusing the manual edit path).
 function applyLookupTee(scope, course, tee){
-  const c=scopeCourse(scope); if(!c) return;
+  const c=scopeCourse(scope); if(!c) return "no-course";
   const club=course.club_name, name=course.course_name;
   c.courseName = (club&&name&&club!==name) ? (club+" — "+name) : (name||club||c.courseName);
   c.tees = tee.gender ? (tee.name+" ("+tee.gender+")") : tee.name;
   if(isFinite(tee.cr)    && tee.cr>50    && tee.cr<90)     c.cr=tee.cr;
   if(isFinite(tee.slope) && tee.slope>=55&& tee.slope<=155) c.slope=tee.slope;
   if(tee.par!=null && isFinite(tee.par) && tee.par>=27 && tee.par<=80) c.par=tee.par;
+  let status="imported";
   if(tee.holes && tee.holes.length===18){
     const seen=new Set(); let siOK=true;
     for(const h of tee.holes){ const si=h.si; if(si<1||si>18||seen.has(si)){ siOK=false; break; } seen.add(si); }
@@ -1815,10 +1816,14 @@ function applyLookupTee(scope, course, tee){
       par: (h.par>=3 && h.par<=6) ? h.par : (c.holes[i]?c.holes[i].par:4),
       si:  siOK ? h.si : (c.holes[i]?c.holes[i].si:(i+1))
     }));
+    if(!siOK) status="si-missing";   // pars updated where given, but stroke index kept (no clean 1–18 set supplied)
+  } else {
+    status="no-holes";               // no usable per-hole data; pars & stroke index left unchanged
   }
   saveState();
   if(state.sameCourseAll) renderHeader();
   renderSetup();
+  return status;
 }
 
 function openCourseLookup(scope){
@@ -1934,8 +1939,12 @@ function renderCourseLookup(){
   if(L.view==="tees"){
     o.querySelector("#clBack").addEventListener("click", ()=>{ L.view="results"; L.msg=""; L.err=false; renderCourseLookup(); });
     o.querySelectorAll("[data-pick-tee]").forEach(b=>b.addEventListener("click",()=>{
-      applyLookupTee(L.scope, L.course, L.tees[Number(b.dataset.pickTee)]);
+      const status=applyLookupTee(L.scope, L.course, L.tees[Number(b.dataset.pickTee)]);
       closeCourseLookup();
+      if(status==="imported") toast("Tee applied — stroke index imported.");
+      else if(status==="si-missing") alert("Heads-up: GolfCourseAPI didn't supply a complete 1–18 stroke index for this tee, so the existing hole handicaps were kept (pars were updated where provided). Verify the hole handicaps before scoring.");
+      else if(status==="no-holes") alert("Heads-up: GolfCourseAPI returned no per-hole data for this tee, so the hole pars and stroke index were left unchanged. Set or verify them manually before scoring.");
+      else toast("Couldn't apply this tee.");
     }));
   }
 }
