@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+<meta name="theme-color" content="#13301E" />
+<title>GolfCourse Lookup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@300;400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --turf-900:#13301E; --turf-700:#1B4332; --turf-500:#2D6A4F; --turf-300:#74C69D;
+  --chalk:#F4F7F0; --card:#FFFFFF; --ink:#15201A; --ink-soft:#5C6E60;
+  --flag:#C1272D; --sand:#EBE1CB; --line:#D8E2D3; --line-strong:#B9C8B2;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{
+  font-family:'Inter',system-ui,-apple-system,sans-serif;
+  background:var(--chalk); color:var(--ink);
+  background-image:radial-gradient(circle at 1px 1px, rgba(45,106,79,.06) 1px, transparent 0);
+  background-size:22px 22px;
+}
+.gc-wrap{max-width:1040px;margin:0 auto;padding:0 18px 64px;}
+
+/* top bar */
+.gc-bar{
+  background:var(--turf-900); color:#EAF3EA;
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:14px 18px; position:sticky; top:0; z-index:20;
+  border-bottom:3px solid var(--turf-500);
+}
+.gc-brand{display:flex;align-items:center;gap:10px;}
+.gc-brand .pin{
+  width:30px;height:30px;border-radius:6px;background:var(--flag);
+  display:grid;place-items:center;color:#fff;flex:0 0 auto;
+  box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.25);
+}
+.gc-brand h1{
+  font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.14em;
+  text-transform:uppercase;font-size:17px;margin:0;line-height:1;
+}
+.gc-key-pill{
+  display:flex;align-items:center;gap:7px;background:rgba(255,255,255,.08);
+  border:1px solid rgba(255,255,255,.18);border-radius:999px;
+  padding:6px 12px;font-size:12.5px;color:#CFE3CF;cursor:pointer;
+  font-weight:500;letter-spacing:.02em;font-family:inherit;
+}
+.gc-key-pill:hover{background:rgba(255,255,255,.14);}
+.gc-key-pill.set{color:var(--turf-300);}
+
+/* hero */
+.gc-hero{padding:42px 0 26px;}
+.gc-eyebrow{
+  font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.34em;
+  font-size:12px;color:var(--turf-500);font-weight:500;margin:0 0 12px;
+}
+.gc-hero h2{
+  font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(30px,6vw,52px);
+  line-height:1.02;margin:0 0 6px;color:var(--turf-900);letter-spacing:-.01em;
+}
+.gc-hero h2 em{color:var(--flag);font-style:normal;}
+.gc-hero p{margin:10px 0 26px;color:var(--ink-soft);font-size:15px;max-width:46ch;}
+
+.gc-searchrow{display:flex;gap:10px;max-width:560px;}
+.gc-input-shell{
+  flex:1;display:flex;align-items:center;gap:10px;background:var(--card);
+  border:1.5px solid var(--line-strong);border-radius:10px;padding:0 14px;
+  transition:border-color .15s, box-shadow .15s;
+}
+.gc-input-shell:focus-within{border-color:var(--turf-500);box-shadow:0 0 0 4px rgba(45,106,79,.12);}
+.gc-input-shell svg{color:var(--turf-500);flex:0 0 auto;}
+.gc-input-shell input{
+  border:0;outline:0;background:transparent;font-size:15px;font-family:inherit;
+  padding:13px 0;width:100%;color:var(--ink);
+}
+.gc-btn{
+  font-family:'Oswald',sans-serif;text-transform:uppercase;letter-spacing:.08em;
+  font-weight:500;font-size:14px;border:0;border-radius:10px;cursor:pointer;
+  background:var(--turf-700);color:#fff;padding:0 22px;display:inline-flex;
+  align-items:center;gap:8px;transition:background .15s;min-height:48px;
+}
+.gc-btn:hover{background:var(--turf-900);}
+.gc-btn:disabled{opacity:.55;cursor:default;}
+.gc-samplelink{
+  background:none;border:0;color:var(--turf-500);font-size:13px;cursor:pointer;
+  margin-top:14px;font-weight:500;font-family:inherit;text-decoration:underline;
+  text-underline-offset:3px;padding:0;
+}
+.gc-samplelink:hover{color:var(--turf-900);}
+
+/* messages */
+.gc-msg{
+  display:flex;gap:10px;align-items:flex-start;background:#FCEEEE;
+  border:1px solid #E7B9B9;border-radius:10px;padding:13px 15px;
+  color:#8A1F23;font-size:13.5px;max-width:620px;margin-top:18px;line-height:1.5;
+}
+.gc-msg.info{background:#F0F4EE;border:1px solid var(--line-strong);color:var(--ink-soft);}
+.gc-msg svg{flex:0 0 auto;margin-top:1px;}
+.gc-loading{display:flex;align-items:center;gap:10px;color:var(--ink-soft);font-size:14px;margin-top:24px;}
+
+/* results */
+.gc-results{margin-top:10px;display:grid;gap:10px;}
+.gc-result{
+  text-align:left;background:var(--card);border:1px solid var(--line);
+  border-left:4px solid var(--turf-500);border-radius:10px;padding:15px 17px;
+  cursor:pointer;transition:transform .12s, box-shadow .12s, border-color .12s;
+  font-family:inherit;width:100%;
+}
+.gc-result:hover{transform:translateX(2px);box-shadow:0 6px 18px rgba(19,48,30,.09);border-left-color:var(--flag);}
+.gc-result .club{font-family:'Oswald',sans-serif;font-weight:500;font-size:17px;color:var(--turf-900);letter-spacing:.01em;}
+.gc-result .course{font-size:13.5px;color:var(--turf-500);margin-top:1px;font-weight:500;}
+.gc-result .loc{display:flex;align-items:center;gap:5px;color:var(--ink-soft);font-size:12.5px;margin-top:7px;}
+.gc-count{font-size:12.5px;color:var(--ink-soft);margin:22px 0 4px;font-family:'Oswald',sans-serif;letter-spacing:.16em;text-transform:uppercase;}
+
+/* detail */
+.gc-back{display:inline-flex;align-items:center;gap:6px;background:none;border:0;color:var(--turf-500);font-weight:500;cursor:pointer;font-size:13.5px;font-family:inherit;margin:24px 0 18px;padding:0;}
+.gc-back:hover{color:var(--turf-900);}
+.gc-detail-head{border-bottom:2px solid var(--line-strong);padding-bottom:18px;margin-bottom:6px;}
+.gc-detail-head .club{font-family:'Oswald',sans-serif;font-weight:600;font-size:clamp(24px,4.5vw,38px);color:var(--turf-900);line-height:1.05;letter-spacing:-.01em;}
+.gc-detail-head .course{color:var(--flag);font-size:15px;font-weight:500;margin-top:3px;}
+.gc-detail-head .loc{display:flex;align-items:center;gap:6px;color:var(--ink-soft);font-size:13.5px;margin-top:8px;}
+.gc-sample-tag{display:inline-block;background:var(--sand);color:#7a6b45;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;padding:3px 9px;border-radius:999px;margin-top:12px;}
+
+.gc-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:22px 0 12px;}
+.gc-section-label{font-family:'Oswald',sans-serif;letter-spacing:.2em;text-transform:uppercase;font-size:13px;color:var(--turf-700);font-weight:500;}
+.gc-unit{display:flex;background:var(--card);border:1px solid var(--line-strong);border-radius:8px;overflow:hidden;}
+.gc-unit button{border:0;background:transparent;padding:7px 15px;cursor:pointer;font-family:'Oswald',sans-serif;letter-spacing:.06em;text-transform:uppercase;font-size:12.5px;color:var(--ink-soft);font-weight:500;}
+.gc-unit button.on{background:var(--turf-700);color:#fff;}
+
+/* scorecard */
+.gc-card-scroll{overflow-x:auto;border:1.5px solid var(--turf-900);border-radius:12px;background:var(--card);-webkit-overflow-scrolling:touch;}
+table.gc-score{border-collapse:collapse;width:100%;min-width:680px;font-family:'Oswald',sans-serif;font-weight:400;}
+.gc-score th,.gc-score td{padding:9px 6px;text-align:center;font-size:14px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;white-space:nowrap;}
+.gc-score thead th{background:var(--turf-900);color:#EAF3EA;font-weight:500;letter-spacing:.04em;border-right-color:rgba(255,255,255,.12);}
+.gc-score .lab{text-align:left;position:sticky;left:0;z-index:2;background:var(--card);font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;padding-left:13px;min-width:118px;box-shadow:1px 0 0 var(--line-strong);}
+.gc-score thead .lab{background:var(--turf-900);color:#EAF3EA;}
+.gc-score .seg{background:var(--sand);font-weight:600;color:#6f6038;}
+.gc-score thead .seg{background:var(--turf-700);color:#fff;}
+.gc-score .tot{background:#dfd3b4;font-weight:600;color:#5d4f2c;}
+.gc-score thead .tot{background:var(--flag);color:#fff;}
+.gc-row-par .lab,.gc-row-par td{background:#EAF2E8;color:var(--turf-900);font-weight:500;}
+.gc-row-par .lab{background:#dcebd7;}
+.gc-row-si .lab,.gc-row-si td{font-size:12px;color:var(--ink-soft);}
+.gc-tee-cell{display:flex;align-items:center;gap:9px;text-align:left;}
+.gc-swatch{width:15px;height:15px;border-radius:4px;flex:0 0 auto;box-shadow:0 0 0 1px rgba(0,0,0,.12);}
+.gc-tee-name{display:flex;flex-direction:column;line-height:1.15;}
+.gc-tee-name b{font-family:'Inter',sans-serif;font-weight:600;font-size:12.5px;color:var(--ink);}
+.gc-tee-name small{font-size:10.5px;color:var(--ink-soft);font-family:'Inter',sans-serif;font-weight:500;letter-spacing:.02em;}
+.gc-foot-note{color:var(--ink-soft);font-size:12px;margin-top:10px;line-height:1.5;}
+
+/* key modal */
+.gc-overlay{position:fixed;inset:0;background:rgba(19,48,30,.55);display:grid;place-items:center;padding:18px;z-index:50;}
+.gc-modal{background:var(--card);border-radius:14px;max-width:430px;width:100%;padding:24px;box-shadow:0 24px 60px rgba(0,0,0,.3);}
+.gc-modal h3{font-family:'Oswald',sans-serif;font-weight:600;letter-spacing:.05em;text-transform:uppercase;font-size:18px;color:var(--turf-900);margin:0 0 4px;display:flex;align-items:center;gap:9px;}
+.gc-modal p{font-size:13.5px;color:var(--ink-soft);margin:0 0 16px;line-height:1.55;}
+.gc-modal p a{color:var(--turf-500);font-weight:500;}
+.gc-modal code{background:var(--chalk);padding:1px 5px;border-radius:4px;font-size:12px;}
+.gc-modal input{width:100%;border:1.5px solid var(--line-strong);border-radius:9px;padding:12px 13px;font-size:14px;font-family:inherit;outline:0;}
+.gc-modal input:focus{border-color:var(--turf-500);box-shadow:0 0 0 4px rgba(45,106,79,.12);}
+.gc-modal-actions{display:flex;gap:10px;margin-top:16px;}
+.gc-modal-actions .ghost{background:none;color:var(--ink-soft);border:1px solid var(--line-strong);}
+.gc-modal-actions .ghost:hover{background:var(--chalk);}
+.hidden{display:none !important;}
+
+.gc-spin{animation:gcspin 1s linear infinite;transform-origin:center;}
+@keyframes gcspin{to{transform:rotate(360deg);}}
+:focus-visible{outline:2px solid var(--turf-500);outline-offset:2px;}
+@media (prefers-reduced-motion: reduce){*{transition:none !important;animation:none !important;}}
+</style>
+</head>
+<body>
+
+<header class="gc-bar">
+  <div class="gc-brand">
+    <span class="pin" id="icoFlag"></span>
+    <h1>GolfCourse Lookup</h1>
+  </div>
+  <button class="gc-key-pill" id="keyPill"></button>
+</header>
+
+<div class="gc-wrap">
+  <section class="gc-hero" id="hero">
+    <p class="gc-eyebrow">Scorecard Finder</p>
+    <h2>Find any course.<br />Read every <em>tee</em>.</h2>
+    <p>Search nearly 30,000 courses, then pull the full scorecard — par, stroke index and distance for every hole, across all tee sets.</p>
+    <div class="gc-searchrow">
+      <label class="gc-input-shell">
+        <span id="icoSearch"></span>
+        <input id="searchInput" placeholder="Search by course or club name…" aria-label="Course search" />
+      </label>
+      <button class="gc-btn" id="searchBtn">Search</button>
+    </div>
+    <button class="gc-samplelink" id="sampleBtn">No key yet? Load a sample course →</button>
+    <div id="heroFeedback"></div>
+  </section>
+
+  <section id="detail" class="hidden"></section>
+</div>
+
+<div class="gc-overlay hidden" id="keyOverlay">
+  <div class="gc-modal" role="dialog" aria-modal="true" aria-label="API key">
+    <h3><span id="icoKeyModal"></span> API Key</h3>
+    <p>Paste your free key from <a href="https://golfcourseapi.com" target="_blank" rel="noreferrer">golfcourseapi.com</a>. It's stored only on this device and sent as <code>Authorization: Key …</code>.</p>
+    <input id="keyInput" type="text" placeholder="your-api-key" aria-label="API key" />
+    <div class="gc-modal-actions">
+      <button class="gc-btn" id="keySave" style="flex:1;justify-content:center;">Save key</button>
+      <button class="gc-btn ghost" id="keyClose">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- icons (inline SVG) ---------- */
+const ico = {
+  flag: (s=17,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`,
+  search: (s=18,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  key: (s=15,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2"/><path d="m17 6 3 3"/><path d="m15 8 2.5 2.5"/></svg>`,
+  pin: (s=13,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>`,
+  back: (s=15,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>`,
+  alert: (s=17,c="currentColor")=>`<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  spin: (s=16,c="currentColor")=>`<svg class="gc-spin" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="${c}" stroke-width="2.2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.5" opacity=".9"/></svg>`,
+};
+
+/* ---------- state & persistence ---------- */
+const API_BASE = "https://api.golfcourseapi.com/v1";
+const store = {
+  get(){ try{ return localStorage.getItem("gc_api_key")||""; }catch(e){ return mem; } },
+  set(v){ try{ localStorage.setItem("gc_api_key", v); }catch(e){ mem = v; } },
+};
+let mem = "";
+let apiKey = store.get();
+let unit = "yards";
+
+const $ = (id)=>document.getElementById(id);
+
+/* ---------- helpers ---------- */
+const esc = (s)=>String(s==null?"":s).replace(/[&<>"]/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const sum = (arr)=>arr.reduce((a,b)=>a+(Number(b)||0),0);
+const yToM = (y)=>Math.round(Number(y)*0.9144);
+const locStr = (l)=>[l&&l.city,l&&l.state,l&&l.country].filter(Boolean).join(", ");
+
+function teeColor(name){
+  const n = String(name||"").toLowerCase();
+  if(n.includes("black")||n.includes("champ")||n.includes("tournament")) return "#1a1a1a";
+  if(n.includes("blue")) return "#1d4ed8";
+  if(n.includes("gold")||n.includes("yellow")) return "#caa11a";
+  if(n.includes("white")) return "#ffffff";
+  if(n.includes("red")) return "#c1272d";
+  if(n.includes("green")) return "#2d6a4f";
+  if(n.includes("silver")||n.includes("gray")||n.includes("grey")) return "#9aa39b";
+  if(n.includes("orange")) return "#ea580c";
+  if(n.includes("purple")||n.includes("combo")) return "#7c3aed";
+  return "#0f766e";
+}
+
+function buildSample(){
+  const par = [4,4,3,5,4,4,3,4,5,4,3,4,5,4,3,4,4,5];
+  const si  = [7,3,15,1,11,5,17,9,13,8,18,4,2,10,16,6,12,14];
+  const blue= [410,395,175,540,430,405,165,420,560,415,180,440,555,425,170,400,410,545];
+  const mk = (f)=>par.map((p,i)=>({par:p,handicap:si[i],yardage:Math.round(blue[i]*f)}));
+  return {
+    id:"sample", club_name:"Whispering Pines Golf Club", course_name:"The Championship Course",
+    location:{city:"Pinehurst",state:"North Carolina",country:"United States"}, _sample:true,
+    tees:{
+      male:[
+        {tee_name:"Blue",course_rating:74.1,slope_rating:142,number_of_holes:18,holes:mk(1)},
+        {tee_name:"White",course_rating:71.8,slope_rating:134,number_of_holes:18,holes:mk(0.92)},
+      ],
+      female:[ {tee_name:"Red",course_rating:70.2,slope_rating:124,number_of_holes:18,holes:mk(0.78)} ],
+    },
+  };
+}
+
+/* ---------- key pill / modal ---------- */
+function renderKeyPill(){
+  const pill = $("keyPill");
+  if(apiKey){ pill.classList.add("set"); pill.innerHTML = ico.key(14)+" Key \u2022\u2022\u2022\u2022"+esc(apiKey.slice(-4)); }
+  else { pill.classList.remove("set"); pill.innerHTML = ico.key(14)+" Add API key"; }
+}
+function openKey(){ $("keyInput").value = apiKey; $("keyOverlay").classList.remove("hidden"); $("keyInput").focus(); }
+function closeKey(){ $("keyOverlay").classList.add("hidden"); }
+function saveKey(){ apiKey = $("keyInput").value.trim(); store.set(apiKey); renderKeyPill(); closeKey(); }
+
+/* ---------- feedback ---------- */
+function feedback(html){ $("heroFeedback").innerHTML = html || ""; }
+function errorHtml(msg){ return `<div class="gc-msg" role="alert">${ico.alert(17)}<span>${msg}</span></div>`; }
+function infoHtml(msg){ return `<div class="gc-msg info">${ico.alert(17)}<span>${msg}</span></div>`; }
+
+function handleError(err){
+  const m = String(err && err.message);
+  if(m==="auth") return errorHtml("That API key was rejected (401). Open the key panel and check it.");
+  if(m.indexOf("status:")===0) return errorHtml("The API responded with an error ("+esc(m.split(":")[1])+"). Try a different search.");
+  return errorHtml("Couldn't reach the API from the browser. This is usually a CORS block \u2014 the key may be fine, but the request can't run client-side. Use \u201cLoad a sample course\u201d to preview the layout, or route the call through a small proxy.");
+}
+
+/* ---------- API ---------- */
+async function apiGet(path){
+  const res = await fetch(API_BASE+path, { headers:{ Authorization:"Key "+apiKey } });
+  if(res.status===401) throw new Error("auth");
+  if(!res.ok) throw new Error("status:"+res.status);
+  return res.json();
+}
+
+async function runSearch(){
+  const q = $("searchInput").value.trim();
+  if(!q) return;
+  if(!apiKey){ openKey(); return; }
+  showDetail(false);
+  feedback(`<div class="gc-loading">${ico.spin(16)} Searching the course database…</div>`);
+  try{
+    const data = await apiGet("/search?search_query="+encodeURIComponent(q));
+    renderResults(Array.isArray(data.courses)?data.courses:[]);
+  }catch(err){ feedback(handleError(err)); }
+}
+
+async function openCourse(id){
+  if(!apiKey){ openKey(); return; }
+  feedback(`<div class="gc-loading">${ico.spin(16)} Loading scorecard…</div>`);
+  try{
+    const data = await apiGet("/courses/"+encodeURIComponent(id));
+    renderDetail(data.course || data);
+  }catch(err){ feedback(handleError(err)); }
+}
+
+/* ---------- render: results ---------- */
+let lastResults = [];
+function renderResults(courses){
+  lastResults = courses;
+  if(!courses.length){ feedback(infoHtml("No courses matched that search. Try a club name or a well-known course.")); return; }
+  const rows = courses.map((c,i)=>{
+    const club = esc(c.club_name||c.course_name||"Unnamed course");
+    const sub = c.course_name && c.course_name!==c.club_name ? `<div class="course">${esc(c.course_name)}</div>` : "";
+    const loc = esc(locStr(c.location)) || "Location unavailable";
+    return `<button class="gc-result" data-i="${i}"><div class="club">${club}</div>${sub}<div class="loc">${ico.pin(13)} ${loc}</div></button>`;
+  }).join("");
+  feedback(`<p class="gc-count">${courses.length} ${courses.length===1?"match":"matches"}</p><div class="gc-results">${rows}</div>`);
+  document.querySelectorAll(".gc-result").forEach((el)=>{
+    el.addEventListener("click",()=>{ const c = lastResults[+el.dataset.i]; openCourse(c.id); });
+  });
+}
+
+/* ---------- render: detail / scorecard ---------- */
+function showDetail(on){
+  $("detail").classList.toggle("hidden", !on);
+  $("hero").classList.toggle("hidden", on);
+}
+
+function collectTees(course){
+  const t = course.tees||{}; const tees=[];
+  (t.male||[]).forEach((x)=>tees.push(Object.assign({gender:"M"},x)));
+  (t.female||[]).forEach((x)=>tees.push(Object.assign({gender:"W"},x)));
+  return tees;
+}
+
+let currentCourse = null;
+function renderDetail(course){
+  currentCourse = course;
+  feedback("");
+  const tees = collectTees(course);
+  const both = (course.tees&&course.tees.male&&course.tees.male.length>0) && (course.tees&&course.tees.female&&course.tees.female.length>0);
+  const ref = tees.find((x)=>x.holes&&x.holes.length) || tees[0] || {};
+  const holes = ref.holes || [];
+  const n = holes.length || ref.number_of_holes || 18;
+  const hasBack = n>9;
+  const idx = Array.from({length:n},(_,i)=>i);
+  const front = idx.slice(0,9), back = idx.slice(9,18);
+  const conv = (y)=> unit==="meters" ? yToM(y) : Math.round(Number(y)||0);
+  const segSum = (seg,h)=>sum(seg.map((i)=>h[i]&&h[i].yardage));
+
+  const head = `
+    <button class="gc-back" id="backBtn">${ico.back(15)} Back to search</button>
+    <div class="gc-detail-head">
+      <div class="club">${esc(course.club_name||course.course_name||"Course")}</div>
+      ${course.course_name&&course.course_name!==course.club_name?`<div class="course">${esc(course.course_name)}</div>`:""}
+      ${locStr(course.location)?`<div class="loc">${ico.pin(14)} ${esc(locStr(course.location))}</div>`:""}
+      ${course._sample?`<span class="gc-sample-tag">Sample data</span>`:""}
+    </div>`;
+
+  if(!tees.length){
+    $("detail").innerHTML = head + infoHtml("This course has no published tee or scorecard data.");
+    wireDetail(); showDetail(true); return;
+  }
+
+  const th = (cells)=>cells;
+  let headCells = `<th class="lab">Hole</th>`;
+  front.forEach((i)=>headCells+=`<th>${i+1}</th>`); headCells+=`<th class="seg">Out</th>`;
+  if(hasBack){ back.forEach((i)=>headCells+=`<th>${i+1}</th>`); headCells+=`<th class="seg">In</th>`; }
+  headCells+=`<th class="tot">Tot</th>`;
+
+  // par row
+  let parRow = `<tr class="gc-row-par"><td class="lab">Par</td>`;
+  front.forEach((i)=>parRow+=`<td>${holes[i]&&holes[i].par!=null?holes[i].par:"\u2013"}</td>`);
+  parRow+=`<td class="seg">${sum(front.map((i)=>holes[i]&&holes[i].par))}</td>`;
+  if(hasBack){ back.forEach((i)=>parRow+=`<td>${holes[i]&&holes[i].par!=null?holes[i].par:"\u2013"}</td>`); parRow+=`<td class="seg">${sum(back.map((i)=>holes[i]&&holes[i].par))}</td>`; }
+  parRow+=`<td class="tot">${sum(holes.map((h)=>h&&h.par))}</td></tr>`;
+
+  // stroke index row
+  let siRow = `<tr class="gc-row-si"><td class="lab">Stroke index</td>`;
+  front.forEach((i)=>siRow+=`<td>${holes[i]&&holes[i].handicap!=null?holes[i].handicap:"\u2013"}</td>`);
+  siRow+=`<td class="seg">\u2014</td>`;
+  if(hasBack){ back.forEach((i)=>siRow+=`<td>${holes[i]&&holes[i].handicap!=null?holes[i].handicap:"\u2013"}</td>`); siRow+=`<td class="seg">\u2014</td>`; }
+  siRow+=`<td class="tot">\u2014</td></tr>`;
+
+  // tee rows
+  let teeRows = "";
+  tees.forEach((tee)=>{
+    const h = tee.holes||[];
+    const outV = conv(segSum(front,h));
+    const inV = hasBack ? conv(segSum(back,h)) : 0;
+    const totV = conv(segSum(idx,h));
+    const cr = tee.course_rating, sl = tee.slope_rating;
+    const rating = (cr||sl) ? `<small>CR ${cr!=null?cr:"\u2013"} \u00b7 SL ${sl!=null?sl:"\u2013"}</small>` : "";
+    let r = `<tr><td class="lab"><span class="gc-tee-cell"><span class="gc-swatch" style="background:${teeColor(tee.tee_name)}"></span><span class="gc-tee-name"><b>${esc(tee.tee_name||"Tee")}${both?" ("+tee.gender+")":""}</b>${rating}</span></span></td>`;
+    front.forEach((i)=>r+=`<td>${h[i]&&h[i].yardage?conv(h[i].yardage):"\u2013"}</td>`);
+    r+=`<td class="seg">${outV||"\u2013"}</td>`;
+    if(hasBack){ back.forEach((i)=>r+=`<td>${h[i]&&h[i].yardage?conv(h[i].yardage):"\u2013"}</td>`); r+=`<td class="seg">${inV||"\u2013"}</td>`; }
+    r+=`<td class="tot">${totV||"\u2013"}</td></tr>`;
+    teeRows+=r;
+  });
+
+  $("detail").innerHTML = head + `
+    <div class="gc-toolbar">
+      <span class="gc-section-label">Scorecard \u00b7 ${n} holes \u00b7 ${tees.length} tees</span>
+      <div class="gc-unit" role="group" aria-label="Distance unit">
+        <button id="unitY" class="${unit==="yards"?"on":""}">Yards</button>
+        <button id="unitM" class="${unit==="meters"?"on":""}">Meters</button>
+      </div>
+    </div>
+    <div class="gc-card-scroll">
+      <table class="gc-score">
+        <thead><tr>${headCells}</tr></thead>
+        <tbody>${parRow}${siRow}${teeRows}</tbody>
+      </table>
+    </div>
+    <p class="gc-foot-note">Distances in ${unit}. Meters are converted from the API's yardage figures. CR = course rating, SL = slope rating${both?"; (M)/(W) marks the men's and women's tee sets.":"."}</p>`;
+
+  wireDetail();
+  showDetail(true);
+}
+
+function wireDetail(){
+  const back = $("backBtn"); if(back) back.addEventListener("click",()=>{ showDetail(false); });
+  const uy = $("unitY"), um = $("unitM");
+  if(uy) uy.addEventListener("click",()=>{ unit="yards"; renderDetail(currentCourse); });
+  if(um) um.addEventListener("click",()=>{ unit="meters"; renderDetail(currentCourse); });
+}
+
+/* ---------- init ---------- */
+$("icoFlag").innerHTML = ico.flag(17,"#fff");
+$("icoSearch").innerHTML = ico.search(18);
+$("icoKeyModal").innerHTML = ico.key(18,"#13301E");
+renderKeyPill();
+
+$("keyPill").addEventListener("click", openKey);
+$("keySave").addEventListener("click", saveKey);
+$("keyClose").addEventListener("click", closeKey);
+$("keyOverlay").addEventListener("click",(e)=>{ if(e.target.id==="keyOverlay") closeKey(); });
+$("keyInput").addEventListener("keydown",(e)=>{ if(e.key==="Enter") saveKey(); });
+
+$("searchBtn").addEventListener("click", runSearch);
+$("searchInput").addEventListener("keydown",(e)=>{ if(e.key==="Enter") runSearch(); });
+$("sampleBtn").addEventListener("click",()=>{ feedback(""); renderDetail(buildSample()); });
+document.addEventListener("keydown",(e)=>{ if(e.key==="Escape") closeKey(); });
+</script>
+</body>
+</html>
