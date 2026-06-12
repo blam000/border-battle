@@ -306,6 +306,18 @@ table.lb-sc td,table.lb-sc th{border:1px solid var(--line);text-align:center;pad
 .qp-matches.pick .qp-mtab{width:100%;flex:1 1 0;min-height:48px;max-height:11vh;justify-content:center;align-items:flex-start;
   border-radius:12px;padding:10px 16px;font-size:16px;gap:4px;}
 .qp-matches.pick .qp-mtab .qp-mtab-sub{font-size:16px;font-weight:700;color:var(--ink);}
+/* collapsed/expandable cards for previous rounds, shown below the current round */
+.qp-rcards{display:flex;flex-direction:column;gap:8px;margin-top:14px;}
+.qp-rcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+.qp-rcard-head{width:100%;display:flex;align-items:center;gap:10px;background:transparent;border:none;
+  padding:11px 13px;text-align:left;cursor:pointer;}
+.qp-rcard-title{flex:1;font-weight:700;font-size:14px;color:var(--muted);min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.qp-rcard-title .qp-rcard-n{color:var(--gold);}
+.qp-rcard-title .qp-rcard-fmt{color:var(--muted);}
+.qp-rcard-chev{color:var(--gold);font-size:13px;flex:0 0 auto;}
+.qp-rcard-body{padding:0 13px 12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px;}
+.qp-rcard-body .qp-mtab{width:100%;margin-top:12px;}
+.qp-rcard-body .qp-mtab:not(:first-child){margin-top:0;}
 .qp-nav{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);
   border-radius:10px;padding:3px 8px;margin-bottom:8px;}
 .qp-nav .qp-arrow{flex:0 0 auto;width:32px;height:32px;border-radius:8px;background:var(--panel-2);
@@ -611,7 +623,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.44;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.45;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -677,6 +689,7 @@ let entry = null;             // active one-touch entry overlay state
 let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
 let selOpen = false;          // round/match selector expanded on the Play tab
+let playRoundCardOpen = {};   // Play tab: round ids whose previous-round card is expanded
 let setupRoundOpen = {};      // Setup tab: round ids the user has manually expanded while collapsed
 let skinsOpen = {};           // roundId -> open? (default open) on the Giant Skins tab
 let lbRoundOpen = {};         // roundId -> open? on the Leaderboard tab
@@ -883,7 +896,7 @@ function openTournament(id){
   state.id = id;
   lib.activeId = id; saveLibrary(lib);
   activeTab = "play"; playAutoHole = true;
-  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={};
+  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={}; playRoundCardOpen={};
   saveState();          // writes STORAGE_KEY + refreshes this entry
   showApp();
   render();
@@ -2262,13 +2275,8 @@ function renderPlayQuick(){
         + units.map(u=>`<button class="qp-mtab" data-pm="${u.anchor}">${u.label}<span class="qp-mtab-sub">${escapeHtml(u.sub)}</span></button>`).join("")
         + `</div>`;
     }
-    const selRounds = rounds.filter(roundHasPlayMatches);
-    if(selRounds.length>1){
-      p+=`<div class="sub" style="margin:0 0 6px">Or choose another round</div><div class="qp-rounds">`
-        + selRounds.map(rr=>`<button class="qp-rtab ${rr.id===playRound?"on":""}" data-pr="${rr.id}">R${rr.n} · ${rr.fmt}</button>`).join("")
-        + `</div>`;
-    }
     p+=`</div>`;
+    p+=playRoundCards(r.id);
     view.innerHTML=p; bindPlayQuick(); return;
   }
 
@@ -2297,21 +2305,17 @@ function renderPlayQuick(){
     statusBox = `<div class="qp2-nrow qp2-hrow qp2-status ${s.cls}"><span class="qp2-st1">${s.st1}</span><span class="qp2-st2">${s.st2}</span></div>`;
   }
 
-  // collapsible round + unit selector
-  const selRounds = rounds.filter(roundHasPlayMatches);
-  const multiRound=selRounds.length>1, multiUnit=units.length>1;
-  if(multiRound || multiUnit){
-    const summary = `R${r.n} · ${escapeHtml(r.fmt)}` + (multiUnit?` · ${unitLabel}`:"");
+  // collapsible unit selector for the displayed round (round switching is via the round cards below)
+  const multiUnit=units.length>1;
+  if(multiUnit){
+    const summary = `R${r.n} · ${escapeHtml(r.fmt)} · ${unitLabel}`;
     html += `<div class="qp-sel ${selOpen?"open":""}">
       <button class="qp-sel-head" data-seltoggle="1">
         <span class="qp-sel-sum">${summary} <span class="qp-sel-names">${matchup}</span></span>
         <span class="qp-sel-chev">${selOpen?"▾":"▸"}</span>
       </button>`;
     if(selOpen){
-      html += `<div class="qp-sel-body">`;
-      if(multiRound) html += `<div class="qp-rounds">`+selRounds.map(rr=>`<button class="qp-rtab ${rr.id===playRound?"on":""}" data-pr="${rr.id}">R${rr.n} · ${rr.fmt}</button>`).join("")+`</div>`;
-      if(multiUnit) html += `<div class="qp-matches">`+units.map((u,i)=>`<button class="qp-mtab ${i===unitIdx?"on":""}" data-pm="${u.anchor}">${u.label}<span class="qp-mtab-sub">${escapeHtml(u.sub)}</span></button>`).join("")+`</div>`;
-      html += `</div>`;
+      html += `<div class="qp-sel-body"><div class="qp-matches">`+units.map((u,i)=>`<button class="qp-mtab ${i===unitIdx?"on":""}" data-pm="${u.anchor}">${u.label}<span class="qp-mtab-sub">${escapeHtml(u.sub)}</span></button>`).join("")+`</div></div>`;
     }
     html += `</div>`;
   }
@@ -2361,6 +2365,9 @@ function renderPlayQuick(){
   html += mscores;
   html += `</div>`;
 
+  // Collapsed/expandable cards for the other rounds, below the current round's card.
+  html += playRoundCards(r.id);
+
   view.innerHTML=html;
   bindPlayQuick();
   initQp2(r,c,balls);
@@ -2400,6 +2407,30 @@ function playUnitsList(round){
     units.push({anchor:grp[0].id, label:`Foursome ${i/2+1}`, sub:grp.map(m=>`${sideFirstNames(m,"R")} v ${sideFirstNames(m,"B")}`).join("  ·  ")});
   }
   return units;
+}
+// Collapsed/expandable cards for the rounds other than the one on screen (your previous
+// rounds), shown beneath the current round's card. Round number is gold; format unchanged.
+// Expanding a card lists its matches; tapping one jumps the Play tab to that round/match.
+function playRoundCards(displayedRoundId){
+  const others=activeRounds().filter(rr=>roundHasPlayMatches(rr) && rr.id!==displayedRoundId);
+  if(!others.length) return "";
+  let h=`<div class="qp-rcards">`;
+  others.forEach(rr=>{
+    const open=!!playRoundCardOpen[rr.id];
+    h+=`<div class="qp-rcard${open?" open":""}">
+      <button class="qp-rcard-head" data-rcard="${rr.id}">
+        <span class="qp-rcard-title"><span class="qp-rcard-n">Round ${rr.n}</span> · <span class="qp-rcard-fmt">${escapeHtml(rr.fmt)}</span></span>
+        <span class="qp-rcard-chev">${open?"▾":"▸"}</span>
+      </button>`;
+    if(open){
+      h+=`<div class="qp-rcard-body">`
+        + playUnitsList(rr).map(u=>`<button class="qp-mtab" data-goto="${rr.id}|${u.anchor}">${u.label}<span class="qp-mtab-sub">${escapeHtml(u.sub)}</span></button>`).join("")
+        + `</div>`;
+    }
+    h+=`</div>`;
+  });
+  h+=`</div>`;
+  return h;
 }
 // Compact match-status bits for the status box.
 function matchStatusBits(round, mm){
@@ -2542,6 +2573,16 @@ function bindPlayQuick(){
   }));
   view.querySelectorAll("[data-pm]").forEach(b=>b.addEventListener("click",e=>{
     playMatch=e.currentTarget.dataset.pm; selOpen=false; playAutoHole=true; renderPlayQuick();
+  }));
+  view.querySelectorAll("[data-rcard]").forEach(b=>b.addEventListener("click",e=>{
+    const id=e.currentTarget.dataset.rcard;
+    playRoundCardOpen[id]=!playRoundCardOpen[id];
+    renderPlayQuick();
+  }));
+  view.querySelectorAll("[data-goto]").forEach(b=>b.addEventListener("click",e=>{
+    const [rid,anchor]=e.currentTarget.dataset.goto.split("|");
+    playRound=rid; playMatch=anchor; currentHole=0; playAutoHole=true; selOpen=false;
+    renderPlayQuick();
   }));
   view.querySelectorAll("[data-holestep]").forEach(b=>b.addEventListener("click",e=>{
     const sc=document.getElementById("qp2scroll"); if(!sc) return;
