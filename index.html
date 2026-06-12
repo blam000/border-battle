@@ -623,7 +623,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.45;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.46;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -2409,14 +2409,18 @@ function playUnitsList(round){
   return units;
 }
 // Collapsed/expandable cards for the rounds other than the one on screen (your previous
-// rounds), shown beneath the current round's card. Round number is gold; format unchanged.
-// Expanding a card lists its matches; tapping one jumps the Play tab to that round/match.
+// rounds), shown beneath the current round's card, in reverse chronological order (newest
+// round first). Round number is gold; format unchanged. Collapsed by default; expanding a
+// card reveals that round's read-only scorecards in the exact Detail-tab format.
 function playRoundCards(displayedRoundId){
-  const others=activeRounds().filter(rr=>roundHasPlayMatches(rr) && rr.id!==displayedRoundId);
+  const others=activeRounds()
+    .filter(rr=>roundHasPlayMatches(rr) && rr.id!==displayedRoundId)
+    .sort((a,b)=>b.n-a.n);
   if(!others.length) return "";
   let h=`<div class="qp-rcards">`;
   others.forEach(rr=>{
     const open=!!playRoundCardOpen[rr.id];
+    const c=courseOf(rr);
     h+=`<div class="qp-rcard${open?" open":""}">
       <button class="qp-rcard-head" data-rcard="${rr.id}">
         <span class="qp-rcard-title"><span class="qp-rcard-n">Round ${rr.n}</span> · <span class="qp-rcard-fmt">${escapeHtml(rr.fmt)}</span></span>
@@ -2424,7 +2428,8 @@ function playRoundCards(displayedRoundId){
       </button>`;
     if(open){
       h+=`<div class="qp-rcard-body">`
-        + playUnitsList(rr).map(u=>`<button class="qp-mtab" data-goto="${rr.id}|${u.anchor}">${u.label}<span class="qp-mtab-sub">${escapeHtml(u.sub)}</span></button>`).join("")
+        + `<div class="sub" style="margin:2px 0 0">${escapeHtml(c.courseName)} · ${escapeHtml(c.tees)} tees${state.useHcp?` · CR ${c.cr} / Slope ${c.slope} / Par ${c.par}`:" · scratch"}</div>`
+        + rr.matches.map(m=>scorecard(rr,m)).join("")
         + `</div>`;
     }
     h+=`</div>`;
@@ -2603,6 +2608,9 @@ function bindPlayQuick(){
     if(nowLocked) playMaybeAdvance();
     saveState(); renderPlayQuick();
   });
+  // Populate Gross/Net totals for the read-only Detail-format scorecards inside any
+  // expanded previous-round cards (mirrors how the Detail tab fills them via bindPlay).
+  view.querySelectorAll(".match-card").forEach(card=>updateMatchTotals(card));
 }
 
 /* ----- one-touch entry overlay ----- */
