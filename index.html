@@ -149,6 +149,18 @@ input::placeholder{color:var(--faint);}
 .prow .x:hover{color:var(--red);}
 .prow .x:disabled{opacity:.3;cursor:not-allowed;}
 
+/* archived per-round handicap indexes */
+.aidx-panel{border:1px solid var(--line);border-radius:10px;background:var(--panel-2);padding:11px 12px;margin-top:12px;}
+.aidx-head{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+.aidx-title{font-weight:700;font-size:13px;color:var(--gold);display:flex;align-items:center;gap:6px;}
+.aidx-head .btn.sm{margin-left:auto;padding:6px 10px;font-size:12px;}
+.aidx-note{font-size:11.5px;color:var(--muted);margin-bottom:9px;line-height:1.35;}
+.aidx-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:4px 0;border-top:1px solid var(--line);}
+.aidx-row:first-of-type{border-top:none;}
+.aidx-name{font-size:13px;}
+.aidx-val{width:64px;text-align:center;background:var(--bg);border:1px solid var(--line);color:var(--ink);border-radius:6px;padding:5px 4px;font-family:var(--mono);font-size:13px;}
+.aidx-val:disabled{opacity:.55;}
+
 /* round setup */
 .round-block{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden;}
 .round-head{display:flex;align-items:center;gap:10px;padding:11px 13px;background:var(--panel-2);}
@@ -611,7 +623,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.43;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.44;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1120,8 +1132,16 @@ function activeRounds(){ return state.rounds.slice(0, state.numRounds); }
    ============================================================ */
 function courseHandicap(player, round){
   if(!state.useHcp) return 0;
-  if(!player || player.index===null || player.index===undefined || player.index==="") return 0;
-  const idx = Number(player.index);
+  if(!player) return 0;
+  // A finalized round keeps a frozen snapshot of each player's handicap index
+  // (round.idx). When present it drives that round's scoring, so later edits to a
+  // player's live index never retroactively change a locked round.
+  let idxRaw = player.index;
+  if(round && round.idx && player.id && Object.prototype.hasOwnProperty.call(round.idx, player.id)){
+    idxRaw = round.idx[player.id];
+  }
+  if(idxRaw===null || idxRaw===undefined || idxRaw==="") return 0;
+  const idx = Number(idxRaw);
   if(Number.isNaN(idx)) return 0;
   const c = courseOf(round);
   return Math.round(idx*(c.slope/113) + (c.cr - c.par));
@@ -1366,6 +1386,29 @@ function roundFullyScored(round){
 // A round is "fully locked" when it has matches and every one is locked (finalized in Play).
 function roundFullyLocked(round){
   return !!round && round.matches.length>0 && round.matches.every(m=>m.locked);
+}
+// Every player id taking part in a round's matches (both sides), de-duplicated.
+function roundPlayerIds(round){
+  const set=new Set();
+  (round&&round.matches||[]).forEach(m=>{
+    (m.red||[]).forEach(id=>set.add(id));
+    (m.blue||[]).forEach(id=>set.add(id));
+  });
+  return [...set];
+}
+// When every match in a round is locked, snapshot each participating player's current
+// handicap index into round.idx and mark it locked. Idempotent: once archived it is left
+// alone (it is only changed via the manual unlock/edit UI in Setup).
+function archiveRoundIndexes(round){
+  if(!round || round.idx) return;        // already archived
+  if(!roundFullyLocked(round)) return;   // not finalized yet
+  const idx={};
+  roundPlayerIds(round).forEach(pid=>{
+    const p=state.players[pid];
+    idx[pid] = (p && p.index!==undefined) ? p.index : null;
+  });
+  round.idx = idx;
+  round.idxLocked = true;
 }
 // Current round advances to a round once its pairings are populated AND the previous
 // round has been fully locked/finalized (round 1 has no previous-round requirement).
@@ -1704,11 +1747,42 @@ function roundSetupBlock(r, isFirst){
     }
     // pairings
     html += pairingsSection(r);
+    // archived per-round handicap indexes (shown once the round has been finalized)
+    html += archivedIndexHtml(r);
     html += `</div>`;
   }
 
   html += `</div>`;
   return html;
+}
+
+/* Panel listing the per-round handicap indexes captured when the round was locked.
+   Locked by default (read-only); the user can unlock to manually edit the values that
+   drive this round's net scores, then lock again. */
+function archivedIndexHtml(r){
+  if(!state.useHcp || !r.idx) return "";
+  const ids = roundPlayerIds(r).filter(pid=>state.players[pid]);
+  if(!ids.length) return "";
+  const locked = r.idxLocked !== false;   // default to locked
+  const rows = ids.map(pid=>{
+    const p=state.players[pid];
+    const v=(r.idx[pid]===null||r.idx[pid]===undefined)?"":r.idx[pid];
+    return `<div class="aidx-row">
+      <span class="aidx-name">${escapeHtml(p.name||"?")}</span>
+      <input class="aidx-val" type="number" step="0.1" inputmode="decimal"
+             data-aidx-rid="${r.id}" data-aidx-pid="${pid}" value="${v}" placeholder="idx"${locked?" disabled":""}>
+    </div>`;
+  }).join("");
+  return `<div class="aidx-panel">
+    <div class="aidx-head">
+      <span class="aidx-title">${locked?LOCK_ICON:"✎"} Round handicap indexes</span>
+      <button class="btn sm ghost" data-aidx-toggle="${r.id}">${locked?"Unlock to edit":"Lock"}</button>
+    </div>
+    <div class="aidx-note">${locked
+      ? "Frozen when this round was finalized — these drive the round's net scores. Later changes to a player's index won't affect this round."
+      : "Editing these recomputes this round's net scores. Lock when done."}</div>
+    ${rows}
+  </div>`;
 }
 
 /* Generic course editor. scope = "master" (state.course) or a round id. */
@@ -2087,6 +2161,20 @@ function bindSetup(){
   view.querySelectorAll(".pidx").forEach(inp=>inp.addEventListener("input",e=>{
     const p=state.players[e.target.dataset.pid];
     if(p){ p.index = e.target.value===""?null:Number(e.target.value); saveState(); }
+  }));
+
+  // archived per-round index: unlock/lock toggle
+  view.querySelectorAll("[data-aidx-toggle]").forEach(b=>b.addEventListener("click",e=>{
+    const r=state.rounds.find(x=>x.id===e.currentTarget.dataset.aidxToggle); if(!r||!r.idx) return;
+    r.idxLocked = (r.idxLocked===false) ? true : false;   // default locked -> unlock; else lock
+    saveState(); renderSetup(); renderHeader();
+  }));
+  // archived per-round index: edit a value (only enabled when unlocked)
+  view.querySelectorAll(".aidx-val").forEach(inp=>inp.addEventListener("input",e=>{
+    const r=state.rounds.find(x=>x.id===e.target.dataset.aidxRid); if(!r||!r.idx) return;
+    const pid=e.target.dataset.aidxPid;
+    r.idx[pid] = e.target.value===""?null:Number(e.target.value);
+    saveState(); renderHeader();   // recompute standings; don't re-render Setup (keep input focus)
   }));
   view.querySelectorAll(".prow .x").forEach(b=>b.addEventListener("click",e=>{
     const pid=e.target.dataset.pid;
@@ -2547,7 +2635,7 @@ function bindPlayQuick(){
     const mm=unitMatches(rr, playMatch); if(!mm.length) return;
     const nowLocked = !mm.every(x=>x.locked);
     mm.forEach(x=>{ x.locked = nowLocked; });
-    if(nowLocked) playMaybeAdvance();
+    if(nowLocked){ archiveRoundIndexes(rr); playMaybeAdvance(); }
     saveState(); renderPlayQuick();
   });
 }
