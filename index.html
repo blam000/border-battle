@@ -60,6 +60,14 @@ header.board{
 .center-col .towin{font-family:var(--display);font-size:22px;color:var(--gold);line-height:.95;}
 .center-col .ofN{font-family:var(--mono);font-size:11px;color:var(--muted);}
 .center-col .towin-cap{margin-top:14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);line-height:1.15;}
+.center-col.clinched{border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;}
+.center-col.clinched.R{background:linear-gradient(135deg, rgba(156,22,34,.35), rgba(20,25,35,.6));}
+.center-col.clinched.B{background:linear-gradient(135deg, rgba(22,54,127,.35), rgba(20,25,35,.6));}
+.center-col .cup-ico{font-size:30px;line-height:1;}
+.center-col .cup-team{font-family:var(--display);font-size:15px;line-height:1;margin-top:3px;}
+.center-col .cup-cap{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;margin-top:3px;}
+.center-col.clinched.R .cup-team,.center-col.clinched.R .cup-cap{color:#ff8d97;}
+.center-col.clinched.B .cup-team,.center-col.clinched.B .cup-cap{color:#8fb4ff;}
 .share-bar{margin-top:9px;height:7px;border-radius:6px;background:var(--panel-2);overflow:hidden;display:flex;border:1px solid var(--line);}
 .share-bar .sr{background:linear-gradient(90deg,var(--red-deep),var(--red));}
 .share-bar .sb{background:linear-gradient(90deg,var(--blue),var(--blue-deep));margin-left:auto;}
@@ -625,7 +633,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
         <div class="pts" id="ptsR">0</div>
         <div class="proj" id="projR">proj 0</div>
       </div>
-      <div class="center-col">
+      <div class="center-col" id="centerCol">
         <div class="towin" id="toWin">12½</div>
         <div class="ofN" id="ofN">of 24</div>
         <div class="ofN towin-cap">needed to win</div>
@@ -662,7 +670,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.67;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.68;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1484,8 +1492,6 @@ function renderHeader(){
 
   const total=totalAvailable();
   const threshold = total>0 ? total/2 + 0.5 : 0;
-  document.getElementById("toWin").textContent = total>0 ? fmtPts(threshold) : "—";
-  document.getElementById("ofN").textContent = "of "+total;
 
   // share bar from decided points
   const dec=t.R+t.B;
@@ -1493,12 +1499,28 @@ function renderHeader(){
   document.getElementById("barR").style.width=rPct+"%";
   document.getElementById("barB").style.width=(100-rPct)+"%";
 
+  // Middle section: normally the "needed to win" counter; once a team clinches it
+  // becomes a persistent trophy panel in that team's colors.
+  const clinchTeam = (t.matchCount>0 && total>0 && t.R>=threshold) ? "R"
+                   : (t.matchCount>0 && total>0 && t.B>=threshold) ? "B" : null;
+  const centerCol=document.getElementById("centerCol");
+  if(clinchTeam){
+    centerCol.className="center-col clinched "+clinchTeam;
+    centerCol.innerHTML=`<div class="cup-ico">🏆</div>`
+      +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`
+      +`<div class="cup-cap">wins the cup</div>`;
+  } else {
+    centerCol.className="center-col";
+    centerCol.innerHTML=`<div class="towin" id="toWin">${total>0?fmtPts(threshold):"—"}</div>`
+      +`<div class="ofN" id="ofN">of ${total}</div>`
+      +`<div class="ofN towin-cap">needed to win</div>`;
+  }
+
   // clinch line
   const cl=document.getElementById("clinch");
   cl.className="clinch";
   if(t.matchCount===0){ cl.textContent="Add pairings in Setup to begin."; return; }
-  if(t.R>=threshold){ cl.classList.add("win"); cl.innerHTML=`<span class="seg-r">${escapeHtml(teamName("R"))}</span> clinch the Cup! 🏆`; return; }
-  if(t.B>=threshold){ cl.classList.add("win"); cl.innerHTML=`<span class="seg-b">${escapeHtml(teamName("B"))}</span> clinch the Cup! 🏆`; return; }
+  if(clinchTeam){ cl.classList.add("win"); cl.innerHTML=`<span class="seg-${clinchTeam.toLowerCase()}">${escapeHtml(teamName(clinchTeam))}</span> clinch the Cup! 🏆`; return; }
   // tie with every available point decided
   if(dec===total && t.R===t.B){
     if(state.defending){ cl.classList.add("win"); cl.innerHTML=`Tied ${fmtPts(t.R)}–${fmtPts(t.B)} · <span class="seg-${state.defending.toLowerCase()}">${escapeHtml(teamName(state.defending))}</span> retain the Cup`; }
