@@ -623,7 +623,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.46;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.47;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -2265,7 +2265,7 @@ function renderPlayQuick(){
   // Pairings exist but no match chosen → prompt for which match on the current round.
   const validMatch = playMatch && r.matches.find(m=>m.id===playMatch);
   if(!validMatch){
-    let p=`<div class="card qp-pickcard"><h2>Round ${r.n} · ${escapeHtml(r.fmt)}</h2>`;
+    let p=`<div class="card qp-pickcard"><h2><span style="color:var(--gold)">Round ${r.n}</span> · ${escapeHtml(r.fmt)}</h2>`;
     if(!r.matches.length){
       p+=`<div class="sub">No matches in this round yet. Add pairings in Setup.</div>`;
     } else {
@@ -2308,7 +2308,7 @@ function renderPlayQuick(){
   // collapsible unit selector for the displayed round (round switching is via the round cards below)
   const multiUnit=units.length>1;
   if(multiUnit){
-    const summary = `R${r.n} · ${escapeHtml(r.fmt)} · ${unitLabel}`;
+    const summary = `<span style="color:var(--gold)">R${r.n}</span> · ${escapeHtml(r.fmt)} · ${unitLabel}`;
     html += `<div class="qp-sel ${selOpen?"open":""}">
       <button class="qp-sel-head" data-seltoggle="1">
         <span class="qp-sel-sum">${summary} <span class="qp-sel-names">${matchup}</span></span>
@@ -2581,7 +2581,9 @@ function bindPlayQuick(){
   }));
   view.querySelectorAll("[data-rcard]").forEach(b=>b.addEventListener("click",e=>{
     const id=e.currentTarget.dataset.rcard;
-    playRoundCardOpen[id]=!playRoundCardOpen[id];
+    const willOpen=!playRoundCardOpen[id];
+    playRoundCardOpen={};                 // accordion: only one card open at a time
+    if(willOpen) playRoundCardOpen[id]=true;
     renderPlayQuick();
   }));
   view.querySelectorAll("[data-goto]").forEach(b=>b.addEventListener("click",e=>{
