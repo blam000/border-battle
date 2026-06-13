@@ -60,7 +60,7 @@ header.board{
 .center-col .towin{font-family:var(--display);font-size:22px;color:var(--gold);line-height:.95;}
 .center-col .ofN{font-family:var(--mono);font-size:11px;color:var(--muted);}
 .center-col .towin-cap{margin-top:14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);line-height:1.15;}
-.center-col.clinched{border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;}
+.center-col.clinched{align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;}
 .center-col.clinched.R{background:linear-gradient(135deg, rgba(156,22,34,.35), rgba(20,25,35,.6));}
 .center-col.clinched.B{background:linear-gradient(135deg, rgba(22,54,127,.35), rgba(20,25,35,.6));}
 .center-col .cup-ico{font-size:30px;line-height:1;}
@@ -670,7 +670,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.68;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.69;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
