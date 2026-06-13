@@ -623,7 +623,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.47;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.48;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -2984,20 +2984,24 @@ function updateMatchTotals(card, round, match, st){
 function renderLeaderboard(){
   let html="";
   let any=false;
+  // When the current round is Round 1 and only one round card is shown, that card
+  // stays open and cannot be collapsed.
+  const lockSingle = currentRoundNum()===1 && activeRounds().filter(r=>r.matches.length).length===1;
   activeRounds().slice().reverse().forEach(r=>{
     if(!r.matches.length) return;
     any=true;
     const c=courseOf(r);
     let rR=0,rB=0;
     r.matches.forEach(m=>{ const d=matchPoints(matchStatus(r,m)); if(d){rR+=d.R;rB+=d.B;} });
-    const isOpen = lbRoundOpen[r.id]===true;
+    const noCollapse = lockSingle;
+    const isOpen = noCollapse ? true : (lbRoundOpen[r.id]===true);
     html+=`<div class="lb-round">
       <button class="lb-round-head" data-lbtoggle="${r.id}">
         <span class="lb-rn">R${r.n}</span>
         <span class="lb-rf">${r.fmt}</span>
         <span class="lb-rc">${escapeHtml(c.courseName)}${c.tees?` · ${escapeHtml(c.tees)}`:""}</span>
         <span class="lb-rp"><span class="seg-r">${fmtPts(rR)}</span> – <span class="seg-b">${fmtPts(rB)}</span></span>
-        <span class="lb-rchev">${isOpen?"▾":"▸"}</span>
+        <span class="lb-rchev">${noCollapse?"":(isOpen?"▾":"▸")}</span>
       </button>`;
     if(isOpen) r.matches.forEach((m,i)=>{ html+=leaderboardCard(r,m,i+1); });
     html+=`</div>`;
@@ -3127,6 +3131,8 @@ function teamScorecard(round, match, st){
 function bindLeaderboard(){
   view.querySelectorAll("[data-lbtoggle]").forEach(b=>b.addEventListener("click",e=>{
     const id=e.currentTarget.dataset.lbtoggle;
+    // A single Round-1 card can't be collapsed.
+    if(currentRoundNum()===1 && activeRounds().filter(r=>r.matches.length).length===1) return;
     lbRoundOpen[id] = !(lbRoundOpen[id]===true);
     renderLeaderboard();
   }));
