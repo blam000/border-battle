@@ -63,11 +63,10 @@ header.board{
 .center-col.clinched{align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;}
 .center-col.clinched.R{background:linear-gradient(135deg, rgba(156,22,34,.35), rgba(20,25,35,.6));}
 .center-col.clinched.B{background:linear-gradient(135deg, rgba(22,54,127,.35), rgba(20,25,35,.6));}
-.center-col .cup-ico{font-size:30px;line-height:1;}
-.center-col .cup-team{font-family:var(--display);font-size:15px;line-height:1;margin-top:3px;}
-.center-col .cup-cap{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;margin-top:3px;}
-.center-col.clinched.R .cup-team,.center-col.clinched.R .cup-cap{color:#ff8d97;}
-.center-col.clinched.B .cup-team,.center-col.clinched.B .cup-cap{color:#8fb4ff;}
+.center-col .cup-ico{font-size:46px;line-height:1;}
+.center-col .cup-team{font-family:var(--display);font-size:15px;line-height:1.05;margin-top:10px;}
+.center-col.clinched.R .cup-team{color:#ff8d97;}
+.center-col.clinched.B .cup-team{color:#8fb4ff;}
 .share-bar{margin-top:9px;height:7px;border-radius:6px;background:var(--panel-2);overflow:hidden;display:flex;border:1px solid var(--line);}
 .share-bar .sr{background:linear-gradient(90deg,var(--red-deep),var(--red));}
 .share-bar .sb{background:linear-gradient(90deg,var(--blue),var(--blue-deep));margin-left:auto;}
@@ -670,7 +669,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.69;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.70;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1507,8 +1506,7 @@ function renderHeader(){
   if(clinchTeam){
     centerCol.className="center-col clinched "+clinchTeam;
     centerCol.innerHTML=`<div class="cup-ico">🏆</div>`
-      +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`
-      +`<div class="cup-cap">wins the cup</div>`;
+      +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`;
   } else {
     centerCol.className="center-col";
     centerCol.innerHTML=`<div class="towin" id="toWin">${total>0?fmtPts(threshold):"—"}</div>`
