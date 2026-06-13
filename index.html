@@ -222,11 +222,20 @@ table.sc thead .tot{min-width:42px;color:var(--ink);}
 .led-sc{padding:4px 0 8px;}
 
 /* individual (stroke-play) leaderboard */
-.ind-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.ind-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;}
 .ind-head h2{margin:0;}
-.ind-seg{margin-left:auto;}
+.ind-seg{margin-left:auto;display:flex;width:216px;}
+.ind-seg button{flex:1 1 0;padding:8px 0;text-align:center;}
 .ind-seg button.on{background:var(--gold);color:#10131a;}
-.ind-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(42,51,66,.5);}
+.ind-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(42,51,66,.5);cursor:pointer;}
+.ind-row.open{border-bottom:none;}
+.ind-detail{padding:2px 0 10px;}
+.ind-sc{margin-top:2px;}
+.ind-sc table.sc .hlbl{min-width:42px;text-align:center;padding:4px 8px;font-family:var(--mono);}
+.ind-sc table.sc .ch-col,.ind-sc table.sc .res-col{min-width:34px;}
+.ind-sc table.sc tbody .ch-col{color:var(--ink);}
+.ind-sc table.sc tbody .res-col{font-weight:700;}
+.ind-sc .res-col.w{color:#7ee0a0;} .ind-sc .res-col.l{color:#ff8d97;} .ind-sc .res-col.t{color:var(--gold);}
 .ind-row:last-child{border-bottom:none;}
 .ind-pos{width:36px;text-align:center;font-family:var(--mono);font-size:15px;color:var(--muted);}
 .ind-name{flex:1;font-weight:700;font-size:15px;line-height:1.1;}
@@ -234,6 +243,7 @@ table.sc thead .tot{min-width:42px;color:var(--ink);}
 .ind-thru{width:92px;text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted);}
 .ind-score{width:52px;text-align:right;font-family:var(--display);font-size:18px;}
 .ind-score.under{color:#7ee0a0;} .ind-score.even{color:var(--gold);} .ind-score.over{color:var(--ink);}
+.ind-score.rec{color:var(--ink);width:60px;}
 .led-m .lst{font-family:var(--mono);font-size:12px;color:var(--muted);}
 .led-m .lst.r{color:#ff8d97;font-weight:600;}
 .led-m .lst.b{color:#8fb4ff;font-weight:600;}
@@ -644,7 +654,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.52;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.60;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -700,7 +710,8 @@ const LOCK_ICON = "🔒";
 const UNLOCK_ICON = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>';
 let expandedMatch = null;     // matchId currently expanded on the leaderboard
 let ledgerMatch = null;       // matchId currently expanded on the ledger
-let indNet = true;            // Individual tab: true=Net, false=Gross (default Net)
+let indMode = "net";          // Individual tab: 'net' | 'gross' | 'record' (default net)
+let indExpanded = null;       // Individual tab: playerId whose scorecard is expanded
 let playRound = null;         // round id selected in the quick Play tab
 let playMatch = null;         // match id selected in the quick Play tab (one at a time)
 let currentHole = 0;          // selected hole (0-17) for quick entry
@@ -3391,42 +3402,153 @@ function individualStandings(){
   return agg;
 }
 
-function renderIndividual(){
-  const agg=individualStandings();
-  const metric = indNet ? "net" : "gross";
-  const arr = Object.keys(agg).map(pid=>{
-    const rkeys=Object.keys(agg[pid].byRound).map(Number);
-    const lastRound = rkeys.length ? Math.max(...rkeys) : 0;
-    const lastThru  = lastRound ? agg[pid].byRound[lastRound] : 0;
-    return {
-      pid, name:((state.players[pid]||{}).name||"?").trim()||"?",
-      team:agg[pid].team, thru:agg[pid].thru, lastRound, lastThru,
-      gross:agg[pid].gross, net:agg[pid].net, score:agg[pid][metric]
-    };
-  }).filter(x=>x.thru>0);
+// The match in a round where pid plays their own ball (null for shared-ball formats).
+function playerMatchInRound(round, pid){
+  if(isSharedBall(round.fmt)) return null;
+  return (round.matches||[]).find(m => (m.red||[]).includes(pid) || (m.blue||[]).includes(pid)) || null;
+}
+function playerTeamInRound(round, pid){
+  const m=playerMatchInRound(round,pid); if(!m) return null;
+  return (m.red||[]).includes(pid) ? "R" : "B";
+}
+function roundPlayerThru(round, pid){
+  const m=playerMatchInRound(round,pid); if(!m) return 0;
+  let n=0; for(let h=0;h<18;h++) if(ballScore(m,pid,h)!==null) n++;
+  return n;
+}
 
-  arr.sort((a,b)=> a.score-b.score || a.gross-b.gross || a.name.localeCompare(b.name));
+// Detail-style scorecard for one player: one row per round they keep individual
+// scores in (Singles / Four-Ball / Aggregate) with at least one hole scored.
+// Shared-ball rounds (Scramble / Alternate Shot) are never included.
+function individualScorecard(pid){
+  const p=state.players[pid];
+  const rounds=activeRounds().filter(r=> !isSharedBall(r.fmt) && roundPlayerThru(r,pid)>0);
+  if(!rounds.length) return `<div class="ind-sc"><div class="sub">No individual rounds scored yet.</div></div>`;
+
+  const headC=courseOf(rounds[0]);  // SI reference for the header row
+  let html=`<div class="ind-sc"><div class="sc-scroll"><table class="sc">`;
+  html+=`<thead><tr><th class="hlbl">Rd</th><th class="ch-col">CH</th><th class="res-col">Res</th>`;
+  for(let h=0;h<18;h++) html+=`<th><span class="hno">${h+1}</span><span class="hsi">${state.useHcp?headC.holes[h].si:""}</span></th>`;
+  html+=`<th class="tot">Gross</th><th class="tot">Net</th></tr></thead><tbody>`;
+
+  rounds.forEach(r=>{
+    const c=courseOf(r);
+    const m=playerMatchInRound(r,pid);
+    const ch=courseHandicap(p,r);                 // player's own course handicap
+    const team = playerTeamInRound(r,pid);
+    const cls = team==="R" ? "ball-r" : "ball-b";
+    // Match result for this round (W / L / T); "–" while undecided.
+    const st = matchStatus(r,m);
+    let res="–", resCls="";
+    if(st.finished){
+      if(st.standing===0){ res="T"; resCls="t"; }
+      else { const won=(st.standing>0?"R":"B")===team; res=won?"W":"L"; resCls=won?"w":"l"; }
+    }
+    html+=`<tr class="${cls}"><td class="hlbl">R${r.n}</td><td class="ch-col">${ch}</td><td class="res-col ${resCls}">${res}</td>`;
+    let gsum=0, allIn=true;
+    for(let h=0;h<18;h++){
+      const g=ballScore(m,pid,h);
+      const recv=strokesOnHole(ch, c.holes[h].si);  // dots from player's course handicap
+      const dots = recv>0 ? `<span class="dots">${Array(recv).fill('<span class="dot"></span>').join("")}</span>` : "";
+      html+=`<td><div class="sc-cell">${dots}<input type="number" readonly tabindex="-1" class="sc-ro" value="${g===null?"":g}"></div></td>`;
+      if(g===null) allIn=false; else gsum+=g;
+    }
+    html+=`<td class="tot-cell">${allIn?gsum:"—"}</td><td class="tot-cell">${allIn?(gsum-ch):"—"}</td>`;
+    html+=`</tr>`;
+  });
+  html+=`</tbody></table></div></div>`;
+  return html;
+}
+
+// Win-loss-tie record across every decided match in every round (all formats,
+// including shared-ball rounds — a match result is a team result either way).
+function individualRecords(){
+  const rec={};
+  activeRounds().forEach(r=>{
+    (r.matches||[]).forEach(m=>{
+      const st=matchStatus(r,m);
+      if(!st.finished) return;                 // only decided matches count
+      const winner = st.standing>0?"R":st.standing<0?"B":"H";
+      [["R",m.red||[]],["B",m.blue||[]]].forEach(([team,ids])=>{
+        ids.forEach(pid=>{
+          if(!state.players[pid]) return;
+          const a=rec[pid] || (rec[pid]={w:0,l:0,t:0,team});
+          a.team=team;
+          if(winner==="H") a.t++;
+          else if(winner===team) a.w++;
+          else a.l++;
+        });
+      });
+    });
+  });
+  return rec;
+}
+// Highest course handicap a player carries across the active rounds (tie-break key).
+function playerMaxCH(pid){
+  const p=state.players[pid];
+  const chs=activeRounds().map(r=>courseHandicap(p,r));
+  return chs.length?Math.max(...chs):0;
+}
+
+function renderIndividual(){
+  const recordMode = indMode==="record";
+  let arr;
+  if(recordMode){
+    const rec=individualRecords();
+    arr = Object.keys(rec).map(pid=>{
+      const r=rec[pid];
+      const pts=r.w + r.t*0.5;
+      return { pid, name:((state.players[pid]||{}).name||"?").trim()||"?", team:r.team,
+        w:r.w, l:r.l, t:r.t, pts, ch:playerMaxCH(pid), rank:pts };
+    }).filter(x=> (x.w+x.l+x.t)>0);
+    // Descending by points, then highest course handicap, then name.
+    arr.sort((a,b)=> b.pts-a.pts || b.ch-a.ch || a.name.localeCompare(b.name));
+  } else {
+    const agg=individualStandings();
+    const metric = indMode;  // 'net' | 'gross'
+    arr = Object.keys(agg).map(pid=>{
+      const rkeys=Object.keys(agg[pid].byRound).map(Number);
+      const lastRound = rkeys.length ? Math.max(...rkeys) : 0;
+      const lastThru  = lastRound ? agg[pid].byRound[lastRound] : 0;
+      return {
+        pid, name:((state.players[pid]||{}).name||"?").trim()||"?",
+        team:agg[pid].team, thru:agg[pid].thru, lastRound, lastThru,
+        gross:agg[pid].gross, net:agg[pid].net, score:agg[pid][metric], rank:agg[pid][metric]
+      };
+    }).filter(x=>x.thru>0);
+    arr.sort((a,b)=> a.score-b.score || a.gross-b.gross || a.name.localeCompare(b.name));
+  }
 
   const toPar = n => n===0?"E":(n>0?`+${n}`:`${n}`);
-  const segOn = which => indNet===(which==="net") ? "on" : "";
+  const segOn = which => indMode===which ? "on" : "";
 
   let body;
   if(!arr.length){
-    body=`<div class="sub">No individual scores yet. Enter hole scores in Play for any Singles, Four-Ball, or Aggregate round and players will rank here. (Scramble and Alternate-Shot rounds share a ball and aren't counted individually.)</div>`;
+    body = recordMode
+      ? `<div class="sub">No decided matches yet. Player win–loss–tie records appear here once matches finish.</div>`
+      : `<div class="sub">No individual scores yet. Enter hole scores in Play for any Singles, Four-Ball, or Aggregate round and players will rank here. (Scramble and Alternate-Shot rounds share a ball and aren't counted individually.)</div>`;
   } else {
     const positions=[];
-    arr.forEach((row,i)=>{ positions[i] = (i>0 && row.score===arr[i-1].score) ? positions[i-1] : i+1; });
+    arr.forEach((row,i)=>{ positions[i] = (i>0 && row.rank===arr[i-1].rank) ? positions[i-1] : i+1; });
     const counts={}; positions.forEach(p=>counts[p]=(counts[p]||0)+1);
     body = arr.map((row,i)=>{
       const pos=(counts[positions[i]]>1?"T":"")+positions[i];
-      const sc=row.score;
-      const scCls = sc<0?"under":sc>0?"over":"even";
-      return `<div class="ind-row">
+      const open = indExpanded===row.pid;
+      let mid, right;
+      if(recordMode){
+        mid = row.pts===1 ? "1 pt" : row.pts===0.5 ? `${fmtPts(row.pts)} pt` : `${fmtPts(row.pts)} pts`;
+        right = `<span class="ind-score rec">${row.w}-${row.l}-${row.t}</span>`;
+      } else {
+        const sc=row.score; const scCls = sc<0?"under":sc>0?"over":"even";
+        mid = `R${row.lastRound} thru ${row.lastThru}`;
+        right = `<span class="ind-score ${scCls}">${toPar(sc)}</span>`;
+      }
+      return `<div class="ind-row${open?" open":""}" data-indrow="${row.pid}">
         <span class="ind-pos">${pos}</span>
         <span class="ind-name ${row.team==="R"?"r":"b"}">${escapeHtml(row.name)}</span>
-        <span class="ind-thru">R${row.lastRound} thru ${row.lastThru}</span>
-        <span class="ind-score ${scCls}">${toPar(sc)}</span>
-      </div>`;
+        <span class="ind-thru">${mid}</span>
+        ${right}
+      </div>` + (open ? `<div class="ind-detail">${individualScorecard(row.pid)}</div>` : "");
     }).join("");
   }
 
@@ -3436,6 +3558,7 @@ function renderIndividual(){
       <div class="seg ind-seg" id="indSeg">
         <button data-ind="net" class="${segOn("net")}">Net</button>
         <button data-ind="gross" class="${segOn("gross")}">Gross</button>
+        <button data-ind="record" class="${segOn("record")}">Record</button>
       </div>
     </div>
     ${body}
@@ -3445,7 +3568,13 @@ function renderIndividual(){
 
 function bindIndividual(){
   view.querySelectorAll("#indSeg [data-ind]").forEach(b=>b.addEventListener("click",e=>{
-    indNet = e.currentTarget.dataset.ind==="net";
+    indMode = e.currentTarget.dataset.ind;   // 'net' | 'gross' | 'record'
+    indExpanded = null;   // collapse any open scorecard when switching modes
+    renderIndividual();
+  }));
+  view.querySelectorAll("[data-indrow]").forEach(el=>el.addEventListener("click",e=>{
+    const pid=e.currentTarget.dataset.indrow;
+    indExpanded = (indExpanded===pid) ? null : pid;
     renderIndividual();
   }));
 }
