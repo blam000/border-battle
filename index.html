@@ -233,6 +233,12 @@ table.sc thead .tot{min-width:42px;color:var(--ink);}
 .ind-sc{margin-top:2px;}
 .ind-sc table.sc .hlbl{min-width:42px;text-align:center;padding:4px 8px;font-family:var(--mono);}
 .ind-sc table.sc .ch-col,.ind-sc table.sc .res-col{min-width:34px;}
+.ind-sc table.sc .hlbl,
+.ind-sc table.sc .ch-col,
+.ind-sc table.sc .res-col{background:#2a3140;}
+.ind-sc table.sc thead .hlbl,
+.ind-sc table.sc thead .ch-col,
+.ind-sc table.sc thead .res-col{background:var(--panel);}
 .ind-sc table.sc tbody .ch-col{color:var(--ink);}
 .ind-sc table.sc tbody .res-col{font-weight:700;}
 .ind-sc .res-col.w{color:#7ee0a0;} .ind-sc .res-col.l{color:#ff8d97;} .ind-sc .res-col.t{color:var(--gold);}
@@ -654,7 +660,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.60;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.63;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
