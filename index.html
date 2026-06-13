@@ -660,7 +660,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.63;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.64;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -729,7 +729,6 @@ let entry = null;             // active one-touch entry overlay state
 let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
 let selOpen = false;          // round/match selector expanded on the Play tab
-let playRoundCardOpen = {};   // Play tab: round ids whose previous-round card is expanded
 let setupRoundOpen = {};      // Setup tab: round ids the user has manually expanded while collapsed
 let skinsOpen = {};           // roundId -> open? (default open) on the Giant Skins tab
 let lbRoundOpen = {};         // roundId -> open? on the Leaderboard tab
@@ -936,7 +935,7 @@ function openTournament(id){
   state.id = id;
   lib.activeId = id; saveLibrary(lib);
   activeTab = "play"; playAutoHole = true;
-  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={}; playRoundCardOpen={};
+  finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={};
   saveState();          // writes STORAGE_KEY + refreshes this entry
   showApp();
   render();
@@ -2317,7 +2316,6 @@ function renderPlayQuick(){
         + `</div>`;
     }
     p+=`</div>`;
-    p+=playRoundCards(r.id);
     view.innerHTML=p; bindPlayQuick(); return;
   }
 
@@ -2406,9 +2404,6 @@ function renderPlayQuick(){
   html += mscores;
   html += `</div>`;
 
-  // Collapsed/expandable cards for the other rounds, below the current round's card.
-  html += playRoundCards(r.id);
-
   view.innerHTML=html;
   bindPlayQuick();
   initQp2(r,c,balls);
@@ -2448,35 +2443,6 @@ function playUnitsList(round){
     units.push({anchor:grp[0].id, label:`Foursome ${i/2+1}`, sub:grp.map(m=>`${sideFirstNames(m,"R")} v ${sideFirstNames(m,"B")}`).join("  ·  ")});
   }
   return units;
-}
-// Collapsed/expandable cards for the rounds other than the one on screen (your previous
-// rounds), shown beneath the current round's card, in reverse chronological order (newest
-// round first). Round number is gold; format unchanged. Collapsed by default; expanding a
-// card reveals that round's read-only scorecards in the exact Detail-tab format.
-function playRoundCards(displayedRoundId){
-  const others=activeRounds()
-    .filter(rr=>roundHasPlayMatches(rr) && rr.id!==displayedRoundId)
-    .sort((a,b)=>b.n-a.n);
-  if(!others.length) return "";
-  let h=`<div class="qp-rcards">`;
-  others.forEach(rr=>{
-    const open=!!playRoundCardOpen[rr.id];
-    const c=courseOf(rr);
-    h+=`<div class="qp-rcard${open?" open":""}">
-      <button class="qp-rcard-head" data-rcard="${rr.id}">
-        <span class="qp-rcard-title"><span class="qp-rcard-n">Round ${rr.n}</span> · <span class="qp-rcard-fmt">${escapeHtml(rr.fmt)}</span></span>
-        <span class="qp-rcard-chev">${open?"▾":"▸"}</span>
-      </button>`;
-    if(open){
-      h+=`<div class="qp-rcard-body">`
-        + `<div class="sub" style="margin:2px 0 0">${escapeHtml(c.courseName)} · ${escapeHtml(c.tees)} tees${state.useHcp?` · CR ${c.cr} / Slope ${c.slope} / Par ${c.par}`:" · scratch"}</div>`
-        + rr.matches.map(m=>scorecard(rr,m)).join("")
-        + `</div>`;
-    }
-    h+=`</div>`;
-  });
-  h+=`</div>`;
-  return h;
 }
 // Compact match-status bits for the status box.
 function matchStatusBits(round, mm){
@@ -2620,13 +2586,6 @@ function bindPlayQuick(){
   view.querySelectorAll("[data-pm]").forEach(b=>b.addEventListener("click",e=>{
     playMatch=e.currentTarget.dataset.pm; selOpen=false; playAutoHole=true; renderPlayQuick();
   }));
-  view.querySelectorAll("[data-rcard]").forEach(b=>b.addEventListener("click",e=>{
-    const id=e.currentTarget.dataset.rcard;
-    const willOpen=!playRoundCardOpen[id];
-    playRoundCardOpen={};                 // accordion: only one card open at a time
-    if(willOpen) playRoundCardOpen[id]=true;
-    renderPlayQuick();
-  }));
   view.querySelectorAll("[data-goto]").forEach(b=>b.addEventListener("click",e=>{
     const [rid,anchor]=e.currentTarget.dataset.goto.split("|");
     playRound=rid; playMatch=anchor; currentHole=0; playAutoHole=true; selOpen=false;
@@ -2651,9 +2610,6 @@ function bindPlayQuick(){
     if(nowLocked) playMaybeAdvance();
     saveState(); renderPlayQuick();
   });
-  // Populate Gross/Net totals for the read-only Detail-format scorecards inside any
-  // expanded previous-round cards (mirrors how the Detail tab fills them via bindPlay).
-  view.querySelectorAll(".match-card").forEach(card=>updateMatchTotals(card));
 }
 
 /* ----- one-touch entry overlay ----- */
