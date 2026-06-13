@@ -217,8 +217,28 @@ table.sc thead .tot{min-width:42px;color:var(--ink);}
 .led-rh{display:flex;align-items:center;gap:10px;padding-bottom:6px;border-bottom:1px solid var(--line);margin-bottom:8px;}
 .led-rh .num{font-family:var(--display);color:var(--gold);font-size:18px;}
 .led-rh .tot{margin-left:auto;font-family:var(--mono);font-size:13px;}
-.led-m{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;font-size:13px;border-bottom:1px solid rgba(42,51,66,.5);}
+.led-m{display:flex;justify-content:space-between;gap:10px;padding:6px 2px;font-size:13px;border-bottom:1px solid rgba(42,51,66,.5);cursor:pointer;}
+.led-m.open{border-bottom:none;}
+.led-sc{padding:4px 0 8px;}
+
+/* individual (stroke-play) leaderboard */
+.ind-head{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.ind-head h2{margin:0;}
+.ind-seg{margin-left:auto;}
+.ind-seg button.on{background:var(--gold);color:#10131a;}
+.ind-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(42,51,66,.5);}
+.ind-row:last-child{border-bottom:none;}
+.ind-pos{width:36px;text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted);}
+.ind-name{flex:1;font-weight:700;font-size:15px;line-height:1.1;}
+.ind-name.r{color:#ff8d97;} .ind-name.b{color:#8fb4ff;}
+.ind-thru{width:54px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);}
+.ind-score{width:52px;text-align:right;font-family:var(--display);font-size:18px;}
+.ind-score.under{color:#7ee0a0;} .ind-score.even{color:var(--gold);} .ind-score.over{color:var(--ink);}
 .led-m .lst{font-family:var(--mono);font-size:12px;color:var(--muted);}
+.led-m .lst.r{color:#ff8d97;font-weight:600;}
+.led-m .lst.b{color:#8fb4ff;font-weight:600;}
+.led-m .lst.h{color:var(--muted);}
+.led-m .lst.live{color:var(--gold);}
 
 /* ---------- Leaderboard ---------- */
 .lb-round{margin-bottom:18px;}
@@ -610,6 +630,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
     <button data-tab="skins" id="skinsTab" class="hide">Giant Skins</button>
     <button data-tab="setup">Setup</button>
     <button data-tab="ledger">Ledger</button>
+    <button data-tab="individual">Individual</button>
     <button data-tab="detail">Detail</button>
     <button data-tab="data">Sync</button>
   </nav>
@@ -623,7 +644,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.48;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.51;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -678,6 +699,8 @@ const LOCK_ICON = "🔒";
 // Open padlock with the shackle swung out to the right, so "unlocked" reads clearly.
 const UNLOCK_ICON = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle"><rect x="3" y="11" width="18" height="11" rx="2"></rect><path d="M7 11V7a5 5 0 0 1 9.9-1"></path></svg>';
 let expandedMatch = null;     // matchId currently expanded on the leaderboard
+let ledgerMatch = null;       // matchId currently expanded on the ledger
+let indNet = true;            // Individual tab: true=Net, false=Gross (default Net)
 let playRound = null;         // round id selected in the quick Play tab
 let playMatch = null;         // match id selected in the quick Play tab (one at a time)
 let currentHole = 0;          // selected hole (0-17) for quick entry
@@ -1487,6 +1510,7 @@ function render(){
   else if(activeTab==="skins") renderSkins();
   else if(activeTab==="setup") renderSetup();
   else if(activeTab==="data") renderData();
+  else if(activeTab==="individual") renderIndividual();
   else renderLedger();
 }
 
@@ -2851,18 +2875,20 @@ function renderPlay(){
   bindPlay();
 }
 
-function scorecard(round, match){
+function scorecard(round, match, noHead){
   const balls=withPlayingHcps(round, match);
   const ready = balls.length>0 && balls.every(b=>b.players.every(Boolean)||isSharedBall(round.fmt));
   const st = ready ? matchStatus(round, match) : null;
   const stTxt = st ? statusText(round, match, st) : {cls:"h",text:"Set pairing"};
 
-  // header
-  let html=`<div class="match-card" data-rid="${round.id}" data-mid="${match.id}">
-    <div class="match-head">
+  // header (omitted with noHead, e.g. on the Ledger tab where the match row is the header)
+  let html=`<div class="match-card" data-rid="${round.id}" data-mid="${match.id}">`;
+  if(!noHead){
+    html+=`<div class="match-head">
       <span class="vs-lbl">${matchVsLabel(round,match)}</span>
       <span class="status ${stTxt.cls}" data-statusfor="${match.id}">${escapeHtml(stTxt.text)}</span>
     </div>`;
+  }
 
   if(!ready){
     html+=`<div style="padding:12px"><div class="empty">Select players for this match in Setup.</div></div></div>`;
@@ -3303,7 +3329,9 @@ function renderLedger(){
     r.matches.forEach(m=>{
       const st=matchStatus(r,m);
       const stTxt=statusText(r,m,st);
-      rows+=`<div class="led-m"><span>${matchVsLabel(r,m)}</span><span class="lst">${escapeHtml(stTxt.text)}</span></div>`;
+      const open = ledgerMatch===m.id;
+      rows+=`<div class="led-m${open?" open":""}" data-ledm="${m.id}"><span>${matchVsLabel(r,m)}</span><span class="lst ${stTxt.cls}">${escapeHtml(stTxt.text)}</span></div>`;
+      if(open) rows+=`<div class="led-sc">${scorecard(r,m,true)}</div>`;
       const dec=matchPoints(st);
       if(dec){rR+=dec.R;rB+=dec.B;}
     });
@@ -3316,6 +3344,104 @@ function renderLedger(){
   if(!any) html=`<div class="card"><h2>Ledger</h2><div class="sub">Points by round and match will appear here once matches are added.</div></div>`;
   else html=`<div class="card"><h2>Points Ledger</h2>${html}</div>`;
   view.innerHTML=html;
+  bindLedger();
+}
+
+function bindLedger(){
+  view.querySelectorAll("[data-ledm]").forEach(el=>el.addEventListener("click",e=>{
+    const id=e.currentTarget.dataset.ledm;
+    ledgerMatch = (ledgerMatch===id) ? null : id;
+    renderLedger();
+  }));
+  // Populate Gross/Net totals for the expanded read-only scorecard (as the Detail tab does).
+  view.querySelectorAll(".match-card").forEach(card=>updateMatchTotals(card));
+}
+
+/* ============================================================
+   INDIVIDUAL TAB  (stroke-play leaderboard, to par)
+   ============================================================ */
+// Aggregate each player's gross/net to-par across every round where they play
+// their own ball (Singles, Four-Ball, Aggregate). Shared-ball rounds (Scramble,
+// Alternate Shot) have no individual scores and are skipped.
+function individualStandings(){
+  const agg={};
+  activeRounds().forEach(r=>{
+    if(isSharedBall(r.fmt)) return;
+    const c=courseOf(r);
+    r.matches.forEach(m=>{
+      matchBalls(r,m).forEach(b=>{
+        if(b.players.length!==1) return;
+        const pid=b.key;
+        if(!state.players[pid]) return;
+        for(let h=0;h<18;h++){
+          const g=ballScore(m,pid,h);
+          if(g===null) continue;
+          const par=c.holes[h].par;
+          const recv=strokesOnHole(b.baseCH, c.holes[h].si);
+          const a=agg[pid] || (agg[pid]={gross:0,net:0,thru:0,team:b.team});
+          a.gross += (g-par);
+          a.net   += (g-recv-par);
+          a.thru  += 1;
+          a.team   = b.team;
+        }
+      });
+    });
+  });
+  return agg;
+}
+
+function renderIndividual(){
+  const agg=individualStandings();
+  const metric = indNet ? "net" : "gross";
+  const arr = Object.keys(agg).map(pid=>({
+    pid, name:((state.players[pid]||{}).name||"?").trim()||"?",
+    team:agg[pid].team, thru:agg[pid].thru,
+    gross:agg[pid].gross, net:agg[pid].net, score:agg[pid][metric]
+  })).filter(x=>x.thru>0);
+
+  arr.sort((a,b)=> a.score-b.score || a.gross-b.gross || a.name.localeCompare(b.name));
+
+  const toPar = n => n===0?"E":(n>0?`+${n}`:`${n}`);
+  const segOn = which => indNet===(which==="net") ? "on" : "";
+
+  let body;
+  if(!arr.length){
+    body=`<div class="sub">No individual scores yet. Enter hole scores in Play for any Singles, Four-Ball, or Aggregate round and players will rank here. (Scramble and Alternate-Shot rounds share a ball and aren't counted individually.)</div>`;
+  } else {
+    const positions=[];
+    arr.forEach((row,i)=>{ positions[i] = (i>0 && row.score===arr[i-1].score) ? positions[i-1] : i+1; });
+    const counts={}; positions.forEach(p=>counts[p]=(counts[p]||0)+1);
+    body = arr.map((row,i)=>{
+      const pos=(counts[positions[i]]>1?"T":"")+positions[i];
+      const sc=row.score;
+      const scCls = sc<0?"under":sc>0?"over":"even";
+      return `<div class="ind-row">
+        <span class="ind-pos">${pos}</span>
+        <span class="ind-name ${row.team==="R"?"r":"b"}">${escapeHtml(row.name)}</span>
+        <span class="ind-thru">thru ${row.thru}</span>
+        <span class="ind-score ${scCls}">${toPar(sc)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  view.innerHTML=`<div class="card">
+    <div class="ind-head">
+      <h2>Individual</h2>
+      <div class="seg ind-seg" id="indSeg">
+        <button data-ind="net" class="${segOn("net")}">Net</button>
+        <button data-ind="gross" class="${segOn("gross")}">Gross</button>
+      </div>
+    </div>
+    ${body}
+  </div>`;
+  bindIndividual();
+}
+
+function bindIndividual(){
+  view.querySelectorAll("#indSeg [data-ind]").forEach(b=>b.addEventListener("click",e=>{
+    indNet = e.currentTarget.dataset.ind==="net";
+    renderIndividual();
+  }));
 }
 
 /* ============================================================
