@@ -228,10 +228,10 @@ table.sc thead .tot{min-width:42px;color:var(--ink);}
 .ind-seg button.on{background:var(--gold);color:#10131a;}
 .ind-row{display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid rgba(42,51,66,.5);}
 .ind-row:last-child{border-bottom:none;}
-.ind-pos{width:36px;text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted);}
+.ind-pos{width:36px;text-align:center;font-family:var(--mono);font-size:15px;color:var(--muted);}
 .ind-name{flex:1;font-weight:700;font-size:15px;line-height:1.1;}
 .ind-name.r{color:#ff8d97;} .ind-name.b{color:#8fb4ff;}
-.ind-thru{width:54px;text-align:right;font-family:var(--mono);font-size:11px;color:var(--muted);}
+.ind-thru{width:92px;text-align:right;font-family:var(--mono);font-size:13px;color:var(--muted);}
 .ind-score{width:52px;text-align:right;font-family:var(--display);font-size:18px;}
 .ind-score.under{color:#7ee0a0;} .ind-score.even{color:var(--gold);} .ind-score.over{color:var(--ink);}
 .led-m .lst{font-family:var(--mono);font-size:12px;color:var(--muted);}
@@ -644,7 +644,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.51;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.52;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -3378,11 +3378,12 @@ function individualStandings(){
           if(g===null) continue;
           const par=c.holes[h].par;
           const recv=strokesOnHole(b.baseCH, c.holes[h].si);
-          const a=agg[pid] || (agg[pid]={gross:0,net:0,thru:0,team:b.team});
+          const a=agg[pid] || (agg[pid]={gross:0,net:0,thru:0,team:b.team,byRound:{}});
           a.gross += (g-par);
           a.net   += (g-recv-par);
           a.thru  += 1;
           a.team   = b.team;
+          a.byRound[r.n] = (a.byRound[r.n]||0) + 1;
         }
       });
     });
@@ -3393,11 +3394,16 @@ function individualStandings(){
 function renderIndividual(){
   const agg=individualStandings();
   const metric = indNet ? "net" : "gross";
-  const arr = Object.keys(agg).map(pid=>({
-    pid, name:((state.players[pid]||{}).name||"?").trim()||"?",
-    team:agg[pid].team, thru:agg[pid].thru,
-    gross:agg[pid].gross, net:agg[pid].net, score:agg[pid][metric]
-  })).filter(x=>x.thru>0);
+  const arr = Object.keys(agg).map(pid=>{
+    const rkeys=Object.keys(agg[pid].byRound).map(Number);
+    const lastRound = rkeys.length ? Math.max(...rkeys) : 0;
+    const lastThru  = lastRound ? agg[pid].byRound[lastRound] : 0;
+    return {
+      pid, name:((state.players[pid]||{}).name||"?").trim()||"?",
+      team:agg[pid].team, thru:agg[pid].thru, lastRound, lastThru,
+      gross:agg[pid].gross, net:agg[pid].net, score:agg[pid][metric]
+    };
+  }).filter(x=>x.thru>0);
 
   arr.sort((a,b)=> a.score-b.score || a.gross-b.gross || a.name.localeCompare(b.name));
 
@@ -3418,7 +3424,7 @@ function renderIndividual(){
       return `<div class="ind-row">
         <span class="ind-pos">${pos}</span>
         <span class="ind-name ${row.team==="R"?"r":"b"}">${escapeHtml(row.name)}</span>
-        <span class="ind-thru">thru ${row.thru}</span>
+        <span class="ind-thru">R${row.lastRound} thru ${row.lastThru}</span>
         <span class="ind-score ${scCls}">${toPar(sc)}</span>
       </div>`;
     }).join("");
