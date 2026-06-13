@@ -411,6 +411,8 @@ table.qp th,table.qp td{text-align:center;border-bottom:1px solid var(--line);}
 .qp2-cell .qp-score{font-size:22px;color:var(--ink);position:relative;top:2px;} .qp2-cell .qp-score sub{font-size:15px;color:var(--muted);}
 .qp2-cell .qp-blank{color:var(--faint);font-size:16px;}
 .qp2-end{flex:0 0 auto;}
+.qp2-totcell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;align-items:center;justify-content:center;}
+.qp2-totcell .qp2-tot-g{font-family:var(--body);font-weight:700;font-size:24px;color:var(--muted);}
 .qp2-lockcell{flex:0 0 var(--qp-holew);width:var(--qp-holew);display:flex;align-items:center;justify-content:center;
   background:var(--panel-2);border-left:1px solid var(--line);}
 .qp2-lock{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;width:74px;height:74px;
@@ -660,7 +662,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.64;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.67;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -2384,11 +2386,14 @@ function renderPlayQuick(){
   html += `<div class="qp2-end"></div></div>`;
   balls.forEach((b,i)=>{
     html += `<div class="qp2-trow ${sepAt(i)?"sep":""}"><div class="qp2-spacer"></div>`;
+    let gsum=0, allIn=true;
     for(let h=0;h<18;h++){
       const gross=ballScore(b.match,b.key,h);
+      if(gross===null) allIn=false; else gsum+=gross;
       const net = gross===null?null:gross-strokesOnHole(b.playHcp,c.holes[h].si);
       html += `<div class="qp2-cell">${gross===null?`<span class="qp-blank">·</span>`:`<span class="qp-score">${gross}<sub>${net}</sub></span>`}</div>`;
     }
+    html += `<div class="qp2-totcell">${allIn?`<span class="qp2-tot-g">${gsum}</span>`:""}</div>`;
     html += `<div class="qp2-end"></div></div>`;
   });
   html += `</div></div>`;
