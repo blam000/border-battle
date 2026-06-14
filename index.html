@@ -669,7 +669,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.73;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.74;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -1566,10 +1566,14 @@ function renderHeader(){
     centerCol.innerHTML=`<div class="cup-ico">🏆</div>`
       +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`;
     // Scenario 1: fire confetti only once per new clinch, and only AFTER the trophy
-    // is actually painted in the header (double-rAF guarantees a completed paint frame).
+    // is visible to the user.  When the app transitions from the home screen the
+    // header goes from display:none to visible in the same tick that renderHeader()
+    // runs, so even a double-rAF fires before the browser has finished painting.
+    // A 400 ms timeout gives the browser enough time to complete the layout/paint
+    // of the newly-visible header AND the trophy HTML before any confetti falls.
     if(clinchCelebrated!==clinchTeam){
       clinchCelebrated=clinchTeam;
-      requestAnimationFrame(()=>requestAnimationFrame(()=>launchConfetti(clinchTeam)));
+      setTimeout(()=>launchConfetti(clinchTeam), 400);
     }
   } else {
     clinchCelebrated=null;   // allow a future clinch to celebrate again
