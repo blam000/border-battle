@@ -60,7 +60,7 @@ header.board{
 .center-col .towin{font-family:var(--display);font-size:22px;color:var(--gold);line-height:.95;}
 .center-col .ofN{font-family:var(--mono);font-size:11px;color:var(--muted);}
 .center-col .towin-cap{margin-top:14px;font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--faint);line-height:1.15;}
-.center-col.clinched{align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;}
+.center-col.clinched{align-self:stretch;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:12px;padding:9px 8px;border:1px solid var(--line);overflow:hidden;min-width:96px;cursor:pointer;-webkit-tap-highlight-color:rgba(232,196,104,.18);}
 .center-col.clinched.R{background:linear-gradient(135deg, rgba(156,22,34,.35), rgba(20,25,35,.6));}
 .center-col.clinched.B{background:linear-gradient(135deg, rgba(22,54,127,.35), rgba(20,25,35,.6));}
 .center-col .cup-ico{font-size:62px;line-height:1;}
@@ -669,7 +669,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.72;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.73;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -735,6 +735,7 @@ let finalizePrompted = new Set(); // unit keys that have shown the first finish 
 let finalizeDeclined = new Set(); // unit keys where the user chose "No" (re-nag on return)
 let endedAnnounced = new Set();   // match ids whose "match finished" result has been shown
 let clinchCelebrated = null;  // team ('R'/'B') whose clinch confetti has already played
+let lastClinchTeam = null;    // team currently holding the clinch (null if not clinched); used for trophy-tap
 let entry = null;             // active one-touch entry overlay state
 let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
@@ -946,6 +947,7 @@ function openTournament(id){
   lib.activeId = id; saveLibrary(lib);
   activeTab = "play"; playAutoHole = true;
   finalizePrompted=new Set(); finalizeDeclined=new Set(); endedAnnounced=new Set(); setupRoundOpen={};
+  clinchCelebrated = null;   // allow confetti to fire when this tournament's scoreboard loads
   saveState();          // writes STORAGE_KEY + refreshes this entry
   showApp();
   render();
@@ -1557,12 +1559,18 @@ function renderHeader(){
   // becomes a persistent trophy panel in that team's colors.
   const clinchTeam = (t.matchCount>0 && total>0 && t.R>=threshold) ? "R"
                    : (t.matchCount>0 && total>0 && t.B>=threshold) ? "B" : null;
+  lastClinchTeam = clinchTeam;   // expose for trophy-tap handler
   const centerCol=document.getElementById("centerCol");
   if(clinchTeam){
     centerCol.className="center-col clinched "+clinchTeam;
     centerCol.innerHTML=`<div class="cup-ico">🏆</div>`
       +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`;
-    if(clinchCelebrated!==clinchTeam){ clinchCelebrated=clinchTeam; launchConfetti(clinchTeam); }
+    // Scenario 1: fire confetti only once per new clinch, and only AFTER the trophy
+    // is actually painted in the header (double-rAF guarantees a completed paint frame).
+    if(clinchCelebrated!==clinchTeam){
+      clinchCelebrated=clinchTeam;
+      requestAnimationFrame(()=>requestAnimationFrame(()=>launchConfetti(clinchTeam)));
+    }
   } else {
     clinchCelebrated=null;   // allow a future clinch to celebrate again
     centerCol.className="center-col";
@@ -3741,6 +3749,17 @@ document.querySelectorAll(".tabs button").forEach(b=>{
 
 /* Tournament-list (home) controls */
 document.getElementById("backHomeBtn").addEventListener("click", showHome);
+
+/* ============================================================
+   Trophy tap — Scenario 2 confetti trigger
+   Wired once here via the stable #centerCol element.
+   Only fires when the clinched trophy panel is actually visible.
+   ============================================================ */
+document.getElementById("centerCol").addEventListener("click", ()=>{
+  if(lastClinchTeam && document.getElementById("centerCol").classList.contains("clinched")){
+    launchConfetti(lastClinchTeam);
+  }
+});
 
 /* ============================================================
    Boot
