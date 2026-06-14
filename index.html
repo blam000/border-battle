@@ -669,7 +669,7 @@ setTimeout(function(){if(s&&s.parentNode)s.parentNode.removeChild(s);},6200);})(
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 "use strict";
-const APP_VERSION = 0.74;   // bump in 0.01 steps; shown top-right as "v .01"
+const APP_VERSION = 0.75;   // bump in 0.01 steps; shown top-right as "v .01"
 
 /* ============================================================
    Constants
@@ -736,6 +736,7 @@ let finalizeDeclined = new Set(); // unit keys where the user chose "No" (re-nag
 let endedAnnounced = new Set();   // match ids whose "match finished" result has been shown
 let clinchCelebrated = null;  // team ('R'/'B') whose clinch confetti has already played
 let lastClinchTeam = null;    // team currently holding the clinch (null if not clinched); used for trophy-tap
+let confettiTimer = null;     // pending confetti setTimeout id — cancelled when renderHeader re-runs
 let entry = null;             // active one-touch entry overlay state
 let courseLookup = null;      // active course-lookup overlay state
 let tenPending = false;       // "10+" tapped, waiting for the ones digit
@@ -1565,15 +1566,19 @@ function renderHeader(){
     centerCol.className="center-col clinched "+clinchTeam;
     centerCol.innerHTML=`<div class="cup-ico">🏆</div>`
       +`<div class="cup-team">${escapeHtml(teamName(clinchTeam))}</div>`;
-    // Scenario 1: fire confetti only once per new clinch, and only AFTER the trophy
-    // is visible to the user.  When the app transitions from the home screen the
-    // header goes from display:none to visible in the same tick that renderHeader()
-    // runs, so even a double-rAF fires before the browser has finished painting.
-    // A 400 ms timeout gives the browser enough time to complete the layout/paint
-    // of the newly-visible header AND the trophy HTML before any confetti falls.
+    // Scenario 1: fire confetti only once per new clinch, and only while the
+    // scoreboard is the active view.  On page refresh the boot render() runs
+    // before showHome(), so appScreen is "home" when the timer fires — the
+    // visibility guard blocks it.  clearTimeout() cancels any stale timer from
+    // the boot render so we don't get double confetti when the user opens the
+    // tournament shortly after.
     if(clinchCelebrated!==clinchTeam){
       clinchCelebrated=clinchTeam;
-      setTimeout(()=>launchConfetti(clinchTeam), 400);
+      clearTimeout(confettiTimer);
+      confettiTimer = setTimeout(()=>{
+        confettiTimer = null;
+        if(appScreen==="app") launchConfetti(clinchTeam);
+      }, 400);
     }
   } else {
     clinchCelebrated=null;   // allow a future clinch to celebrate again
